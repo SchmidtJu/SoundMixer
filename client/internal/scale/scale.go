@@ -8,6 +8,7 @@ const Max = 1023
 const DeadZone = 31
 
 // Epsilon ist die kleinste Lautstärkeänderung, die an Windows weitergegeben wird.
+// Das Rauschen filtert die Firmware. Hier bleibt nur ein kleiner Schutz vor Doppelmeldungen.
 const Epsilon = 0.01
 
 // Level mappt einen Rohwert 0..1023 auf 0..1.

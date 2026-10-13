@@ -4,6 +4,7 @@ package serialconn
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"go.bug.st/serial"
@@ -129,6 +130,10 @@ func readPort(
 			}
 			raw := string(line[:idx])
 			line = append([]byte(nil), line[idx+1:]...)
+			if text := strings.TrimSpace(raw); strings.HasPrefix(text, "gpio ") {
+				logx.Printf("%s", text)
+				continue
+			}
 			values, err := proto.ParseLine(raw)
 			if err != nil {
 				continue

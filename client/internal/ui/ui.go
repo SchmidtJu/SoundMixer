@@ -27,6 +27,7 @@ type App struct {
 	ni           *walk.NotifyIcon
 	link         serialconn.LinkStatus
 	settingsOpen bool
+	quitting     bool
 }
 
 func New(store *config.Store, ctrl *audio.Controller) *App {
@@ -91,6 +92,15 @@ func (a *App) Run() error {
 		return err
 	}
 
+	// Der Einstellungsdialog zeigt beim Schließen das unsichtbare Hauptfenster.
+	// Wegklicken würde sonst die ganze Tray-App beenden.
+	mw.Closing().Attach(func(canceled *bool, _ walk.CloseReason) {
+		if !a.quitting {
+			*canceled = true
+			mw.SetVisible(false)
+		}
+	})
+
 	settingsAction := walk.NewAction()
 	if err := settingsAction.SetText("Einstellungen…"); err != nil {
 		return err
@@ -104,7 +114,10 @@ func (a *App) Run() error {
 	if err := exitAction.SetText("Beenden"); err != nil {
 		return err
 	}
-	exitAction.Triggered().Attach(func() { walk.App().Exit(0) })
+	exitAction.Triggered().Attach(func() {
+		a.quitting = true
+		walk.App().Exit(0)
+	})
 	if err := ni.ContextMenu().Actions().Add(exitAction); err != nil {
 		return err
 	}
@@ -207,6 +220,7 @@ func showSettings(owner walk.Form, store *config.Store, ctrl *audio.Controller, 
 		_ = boxes[i].SetCurrentIndex(indexOf(ids, sliderID(cfg, i)))
 	}
 	dlg.Run()
+	owner.SetVisible(false)
 }
 
 func saveSettings(
