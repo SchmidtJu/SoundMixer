@@ -1,0 +1,6 @@
+.pio/
+.pioenvs/
+.vscode/
+*.exe
+*.log
+*.tmp
