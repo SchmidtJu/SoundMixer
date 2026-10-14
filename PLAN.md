@@ -37,16 +37,26 @@ flowchart LR
 
 ESP32-S3-Zero hat **kein** USB-UART-Chip. `Serial` läuft über den nativen USB-Port (CDC). Zum Flashen: BOOT halten, RESET tippen, dann loslassen.
 
-Jeder Poti (3-polig, 10 kΩ, idealerweise **linear / B10K**): Außenpins an **3V3** und **GND**, Schleifer an einen ADC1-Pin. Vier Potis ziehen zusammen nur etwa 1,3 mA.
+Jeder Poti ist 3-polig, 10 kΩ, idealerweise **linear / B10K**. Die Zählung ist die Pin-Nummer am Schieberegler, von links nach rechts bzw. so, wie die Beinchen am Bauteil sitzen. Vier Potis ziehen zusammen nur etwa 1,3 mA.
 
-Pins (nur ADC1, keine Strap-/USB-/LED-Pins):
+| Pin am Schieberegler | geht an |
+| --- | --- |
+| 1 | **GND** |
+| 2 (Schleifer) | **GP1** bis **GP4**, ein Pin pro Regler |
+| 3 | **3V3** (Ausgang am Board, nicht 5V) |
 
-- Slider 1: GPIO1 (ADC1_CH0)
-- Slider 2: GPIO2 (ADC1_CH1)
-- Slider 3: GPIO4 (ADC1_CH3)
-- Slider 4: GPIO5 (ADC1_CH4)
+Zuordnung, Regler von links nach rechts:
 
-Nicht verwenden: GPIO0 (BOOT), GPIO3 (Strapping), GPIO19/20 (USB), GPIO21 (onboard WS2812).
+- Schieberegler 1: Pin 2 → GP1 (ADC1_CH0)
+- Schieberegler 2: Pin 2 → GP2 (ADC1_CH1)
+- Schieberegler 3: Pin 2 → GP3 (ADC1_CH2)
+- Schieberegler 4: Pin 2 → GP4 (ADC1_CH3)
+
+Pin 1 an GND und Pin 3 an 3V3 legen die Richtung fest: Regler zum Pin-1-Ende liest 0, zum Pin-3-Ende liest voll. Alle vier Regler teilen sich denselben GND- und denselben 3V3-Pin am ESP32-S3-Zero.
+
+GP3 ist ein Strapping-Pin (JTAG-Quelle, nur im Reset-Moment). Zum Flashen den dritten Regler zum GND-Ende schieben, damit GP3 dabei low ist.
+
+Nicht verwenden: GPIO0 (BOOT), GPIO19/20 (USB), GPIO21 (onboard WS2812).
 
 Der ESP32-S3-ADC reicht bei 12-dB-Dämpfung nur bis etwa 3,1 V. Die oberen Prozent des 3,3-V-Potis können deshalb kleben. Firmware mittelt mehrere Samples; der Client setzt an beiden Enden eine kleine Totzone, damit 0 % und 100 % sicher erreicht werden.
 

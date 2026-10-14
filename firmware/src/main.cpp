@@ -1,8 +1,8 @@
 #include <Arduino.h>
 
-// Slider 1..4, links nach rechts. Nur ADC1, keine Strap-/USB-/LED-Pins.
-// Poti: Außenpins an 3V3 und GND, Schleifer an den GPIO.
-static const int kPins[4] = {1, 2, 4, 5};
+// Slider 1..4, links nach rechts, an GP1..GP4.
+// Schieberegler: Pin 1 = GND, Pin 2 = GP, Pin 3 = 3V3.
+static const int kPins[4] = {1, 2, 3, 4};
 static const int kSliderCount = 4;
 // Diagnose: GPIO 1..4 sind die ersten vier ADC1-Kanäle, Rohwerte 0..4095.
 static const int kGpioLogMs = 500;
@@ -79,7 +79,6 @@ void setup() {
   for (int i = 0; i < kSliderCount; i++) {
     analogSetPinAttenuation(kPins[i], ADC_11db);
   }
-  analogSetPinAttenuation(3, ADC_11db);
 
   Serial.begin(115200);
   // Nicht blockieren, wenn der PC den COM-Port noch nicht geöffnet hat.

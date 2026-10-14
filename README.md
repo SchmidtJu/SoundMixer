@@ -6,20 +6,76 @@ Hardware-Lautstärkeregler für Windows-Ausgabegeräte. Ein ESP32-S3-Zero liest 
 
 Der ESP32-S3-Zero hat kein USB-UART-Chip. Das USB-C-Kabel ist Programmier- und Datenleitung.
 
-Jeder Poti ist 3-polig, 10 kΩ, am besten linear (B10K):
+Jeder Poti ist 3-polig, 10 kΩ, am besten linear (B10K). Die Zählung ist die Pin-Nummer am Schieberegler. Alle vier Regler teilen sich denselben GND- und denselben 3V3-Pin am Board (3V3-Ausgang, nicht 5V).
 
-- ein Außenpin an **3V3**
-- der andere Außenpin an **GND**
-- der Schleifer (Mitte) an den GPIO des Sliders
+| Pin am Schieberegler | ESP32-S3-Zero |
+| --- | --- |
+| 1 | GND |
+| 2 (Schleifer) | GP1 bis GP4, ein Pin pro Regler |
+| 3 | 3V3 |
 
-- Slider 1: GPIO1 (ADC1_CH0)
-- Slider 2: GPIO2 (ADC1_CH1)
-- Slider 3: GPIO4 (ADC1_CH3)
-- Slider 4: GPIO5 (ADC1_CH4)
+- Schieberegler 1: Pin 2 an GP1 (ADC1_CH0)
+- Schieberegler 2: Pin 2 an GP2 (ADC1_CH1)
+- Schieberegler 3: Pin 2 an GP3 (ADC1_CH2)
+- Schieberegler 4: Pin 2 an GP4 (ADC1_CH3)
 
-Nicht benutzen: GPIO0 (BOOT), GPIO3 (Strapping), GPIO19/20 (USB), GPIO21 (onboard-LED).
+Pin 1 an GND und Pin 3 an 3V3 legen die Richtung fest: zum Pin-1-Ende liest der Regler 0, zum Pin-3-Ende voll. GP3 ist beim Reset ein Strapping-Pin (JTAG-Quelle). Zum Flashen den dritten Regler zum GND-Ende schieben, damit GP3 dabei low ist.
+
+Nicht benutzen: GPIO0 (BOOT), GPIO19/20 (USB), GPIO21 (onboard-LED).
 
 Vier 10-kΩ-Potis ziehen zusammen etwa 1,3 mA. Der ADC des ESP32-S3 reicht bei 11-dB-Dämpfung nur bis ungefähr 3,1 V, deshalb kleben die obersten Prozent eines 3,3-V-Potis etwas. Firmware und Client fangen das mit Mittelwert und einer kleinen Totzone an beiden Enden ab.
+
+### Pinout ESP32-S3-Zero
+
+Oberseite mit USB-C nach oben, darunter die Rückseite. GP1 bis GP4, GND und 3V3 sitzen in der linken Reihe der Oberseite.
+
+![Pinbelegung des ESP32-S3-Zero](docs/esp32-s3-zero-pinout.jpg)
+
+Oberseite, linke Reihe von oben nach unten. GP1 bis GP6 können UART, PWM, I2S, ADC, I2C und SPI.
+
+| Pin | SoundMixer |
+| --- | --- |
+| 5V | nicht für die Regler |
+| GND | Pin 1 aller Schieberegler |
+| 3V3 (out) | Pin 3 aller Schieberegler |
+| GP1 | Schieberegler 1 |
+| GP2 | Schieberegler 2 |
+| GP3 | Schieberegler 3 |
+| GP4 | Schieberegler 4 |
+| GP5 | frei |
+| GP6 | frei |
+
+Oberseite, rechte Reihe von oben nach unten, danach die drei Pins an der Unterkante. GP7 bis GP13 können SPI, I2C, ADC, I2S, PWM und UART.
+
+| Pin | Funktion |
+| --- | --- |
+| TX | UART0 TX |
+| RX | UART0 RX |
+| GP13 | frei |
+| GP12 | frei |
+| GP11 | frei |
+| GP10 | frei |
+| GP9 | frei |
+| GP8 | frei |
+| GP7 | frei |
+| GP16 | frei, Unterkante |
+| GP15 | frei, Unterkante |
+| GP14 | frei, Unterkante |
+
+Rückseite, linke Reihe von oben nach unten. GP45, GP42, GP41, GP40, GP39 und GP38 können UART, PWM, I2S, I2C und SPI. GP18 und GP17 zusätzlich ADC.
+
+| Pin | Funktion |
+| --- | --- |
+| GP45 | frei |
+| GP42 | frei |
+| GP41 | frei |
+| GP40 | frei |
+| GP39 | frei |
+| GP38 | frei |
+| GP18 | frei, mit ADC |
+| GP17 | frei, mit ADC |
+
+Die RGB-LED auf der Platine hängt fest an GP21 (DIN) und ist nicht als Anschluss herausgeführt.
 
 ## Firmware flashen
 
