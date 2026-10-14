@@ -45,66 +45,43 @@ Oberseite, linke Reihe von oben nach unten. GP1 bis GP6 können UART, PWM, I2S, 
 | GP5 | frei |
 | GP6 | frei |
 
-Oberseite, rechte Reihe von oben nach unten, danach die drei Pins an der Unterkante. GP7 bis GP13 können SPI, I2C, ADC, I2S, PWM und UART.
-
-| Pin | Funktion |
-| --- | --- |
-| TX | UART0 TX |
-| RX | UART0 RX |
-| GP13 | frei |
-| GP12 | frei |
-| GP11 | frei |
-| GP10 | frei |
-| GP9 | frei |
-| GP8 | frei |
-| GP7 | frei |
-| GP16 | frei, Unterkante |
-| GP15 | frei, Unterkante |
-| GP14 | frei, Unterkante |
-
-Rückseite, linke Reihe von oben nach unten. GP45, GP42, GP41, GP40, GP39 und GP38 können UART, PWM, I2S, I2C und SPI. GP18 und GP17 zusätzlich ADC.
-
-| Pin | Funktion |
-| --- | --- |
-| GP45 | frei |
-| GP42 | frei |
-| GP41 | frei |
-| GP40 | frei |
-| GP39 | frei |
-| GP38 | frei |
-| GP18 | frei, mit ADC |
-| GP17 | frei, mit ADC |
-
-Die RGB-LED auf der Platine hängt fest an GP21 (DIN) und ist nicht als Anschluss herausgeführt.
-
 ## Firmware flashen
 
-[PlatformIO](https://platformio.org/) (CLI oder VS Code / Cursor-Erweiterung):
+Zuerst den Tray-Client beenden (**Beenden** im Kontextmenü). Solange er läuft, ist der COM-Port belegt und esptool meldet `Zugriff verweigert`. Schieberegler 3 zum GND-Ende schieben: GP3 ist beim Reset ein Strapping-Pin.
+
+`pio` ist auf diesem Rechner nicht im PATH. PlatformIO läuft über Python. In PowerShell, im Ordner `firmware`, das Image bauen:
 
 ```text
-cd firmware
-pio run -t upload
+python -m platformio run
 ```
 
-Zum Flashen BOOT gedrückt halten, RESET kurz tippen, BOOT loslassen, dann den Upload starten. Danach erscheint ein USB-Serial-Gerät (VID `303A`, meist COM-Port).
-
-Zum Mitlesen:
+Das Board hängt am USB-Serial/JTAG (VID `303A`, hier meist `COM4`). `pio run -t upload` öffnet den Port kurz mit 1200 Baud. Das setzt diesen Chip nicht in den Bootloader und lässt den Port danach zu. Flashen deshalb mit esptool und `--before default_reset`. Den Port aus dem Geräte-Manager einsetzen, wenn es nicht `COM4` ist:
 
 ```text
-pio device monitor
+python $env:USERPROFILE\.platformio\packages\tool-esptoolpy\esptool.py --chip esp32s3 --port COM4 --baud 921600 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 4MB 0x0 .pio\build\esp32-s3-zero\bootloader.bin 0x8000 .pio\build\esp32-s3-zero\partitions.bin 0xe000 $env:USERPROFILE\.platformio\packages\framework-arduinoespressif32\tools\partitions\boot_app0.bin 0x10000 .pio\build\esp32-s3-zero\firmware.bin
+```
+
+Wenn `default_reset` nicht verbindet: BOOT halten, RESET kurz tippen, BOOT loslassen und denselben Aufruf mit `--before no_reset` starten, solange der Chip im Bootloader bleibt.
+
+Zum Mitlesen, ebenfalls nur bei beendetem Client:
+
+```text
+python -m platformio device monitor
 ```
 
 Eine Zeile sieht so aus: `1023|640|0|210` (Slider 1 bis 4, Werte 0 bis 1023).
 
 ## Windows-Client
 
-Voraussetzung: [Go 1.26](https://go.dev/dl/) oder neuer. Im Ordner `client`:
+Go 1.26 oder neuer. Auf diesem Rechner liegt es nicht im PATH, sondern unter `C:\Users\sch_jul2\sdk\go1.27.2\go\bin`. In PowerShell, im Ordner `client`:
 
 ```text
+$env:Path = "C:\Users\sch_jul2\sdk\go1.27.2\go\bin;" + $env:Path
 go build -ldflags "-H windowsgui -s -w" -o soundmixer.exe ./cmd/soundmixer
+.\soundmixer.exe
 ```
 
-`-H windowsgui` startet die exe ohne Konsolenfenster. `cmd/soundmixer/rsrc.syso` bindet das Windows-Manifest ein und muss neben `main.go` liegen, sonst startet die Oberfläche nicht. Die Datei `soundmixer.exe` irgendwo ablegen und starten. Sie erscheint im Infobereich.
+`-H windowsgui` startet die exe ohne Konsolenfenster. `cmd/soundmixer/rsrc.syso` bindet das Windows-Manifest ein und muss neben `main.go` liegen, sonst startet die Oberfläche nicht. Die exe erscheint im Infobereich. Läuft schon eine Instanz, beendet sich der zweite Start sofort. Vor dem neuen Start den alten Client über das Tray-Menü beenden.
 
 Während der Entwicklung, mit Konsole:
 

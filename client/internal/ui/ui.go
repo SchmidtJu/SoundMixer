@@ -219,7 +219,15 @@ func showSettings(owner walk.Form, store *config.Store, ctrl *audio.Controller, 
 		}
 		_ = boxes[i].SetCurrentIndex(indexOf(ids, sliderID(cfg, i)))
 	}
+	// walk zeigt beim Schließen den Owner (SWP_SHOWWINDOW). Das unsichtbare
+	// Hauptfenster würde sonst aufpoppen und die Tray-App beenden.
+	dlg.Closing().Attach(func(canceled *bool, _ walk.CloseReason) {
+		_ = dlg.SetOwner(nil)
+		owner.SetEnabled(true)
+		owner.SetVisible(false)
+	})
 	dlg.Run()
+	owner.SetEnabled(true)
 	owner.SetVisible(false)
 }
 
