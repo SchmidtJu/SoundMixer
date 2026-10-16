@@ -33,11 +33,12 @@ func TestLoadRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := store.Get()
-	if cfg.ComPort != "auto" || len(cfg.Sliders) != SliderCount {
+	if cfg.ComPort != "auto" || !cfg.Logging || len(cfg.Sliders) != SliderCount {
 		t.Fatalf("defaults: %+v", cfg)
 	}
 
 	cfg.InvertSliders = true
+	cfg.Logging = false
 	cfg.Sliders[0] = Slider{DeviceID: "dev-a", DeviceName: "Lautsprecher"}
 	if err := store.Save(cfg); err != nil {
 		t.Fatal(err)
@@ -57,10 +58,30 @@ func TestLoadRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := again.Get()
-	if !got.InvertSliders || got.Sliders[0].DeviceID != "dev-a" || got.LastPort != "COM7" {
+	if !got.InvertSliders || got.Logging || got.Sliders[0].DeviceID != "dev-a" || got.LastPort != "COM7" {
 		t.Fatalf("geladen: %+v", got)
 	}
 	if _, err := os.Stat(filepath.Join(dir, appDirName, fileName)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMissingLoggingStaysOn(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APPDATA", dir)
+	path := filepath.Join(dir, appDirName)
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("{\n  \"com_port\": \"auto\",\n  \"invert_sliders\": false,\n  \"autostart\": false\n}\n")
+	if err := os.WriteFile(filepath.Join(path, fileName), body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !store.Get().Logging {
+		t.Fatal("fehlendes logging muss an bleiben")
 	}
 }

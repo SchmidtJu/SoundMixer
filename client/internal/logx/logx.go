@@ -9,9 +9,17 @@ import (
 )
 
 var (
-	mu     sync.Mutex
-	logger = log.New(os.Stderr, "", log.LstdFlags)
+	mu      sync.Mutex
+	logger  = log.New(os.Stderr, "", log.LstdFlags)
+	enabled = true
 )
+
+// SetEnabled schaltet das Schreiben in die Logdatei ein oder aus.
+func SetEnabled(on bool) {
+	mu.Lock()
+	enabled = on
+	mu.Unlock()
+}
 
 // Init schreibt nach %AppData%\SoundMixer\soundmixer.log.
 // Die Release-exe hat kein Konsolenfenster, die Datei bleibt die Fehlerquelle.
@@ -34,6 +42,9 @@ func Init(dir string) {
 func Printf(format string, args ...any) {
 	mu.Lock()
 	defer mu.Unlock()
+	if !enabled {
+		return
+	}
 	logger.Printf(format, args...)
 }
 

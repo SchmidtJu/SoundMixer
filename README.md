@@ -49,16 +49,19 @@ Oberseite, linke Reihe von oben nach unten. GP1 bis GP6 können UART, PWM, I2S, 
 
 Zuerst den Tray-Client beenden (**Beenden** im Kontextmenü). Solange er läuft, ist der COM-Port belegt und esptool meldet `Zugriff verweigert`. Schieberegler 3 zum GND-Ende schieben: GP3 ist beim Reset ein Strapping-Pin.
 
-`pio` ist auf diesem Rechner nicht im PATH. PlatformIO läuft über Python. In PowerShell, im Ordner `firmware`, das Image bauen:
+PlatformIO muss installiert sein und `pio` im PATH liegen. Im Ordner `firmware` das Image bauen und den Port des Boards suchen (USB-Gerät mit VID `303A`):
 
 ```text
-python -m platformio run
+pio run
+pio device list
 ```
 
-Das Board hängt am USB-Serial/JTAG (VID `303A`, hier meist `COM4`). `pio run -t upload` öffnet den Port kurz mit 1200 Baud. Das setzt diesen Chip nicht in den Bootloader und lässt den Port danach zu. Flashen deshalb mit esptool und `--before default_reset`. Den Port aus dem Geräte-Manager einsetzen, wenn es nicht `COM4` ist:
+Fehlt `pio` im PATH, dieselben Aufrufe mit `python -m platformio` statt `pio`.
+
+`pio run -t upload` öffnet den Port kurz mit 1200 Baud. Am ESP32-S3-Zero (USB-Serial/JTAG) landet der Chip damit nicht zuverlässig im Bootloader, und der Port bleibt danach belegt. Flashen deshalb mit esptool und `--before default_reset`. `COMx` durch den Port aus `pio device list` ersetzen. In der PowerShell `$env:USERPROFILE` statt `%USERPROFILE%` schreiben:
 
 ```text
-python $env:USERPROFILE\.platformio\packages\tool-esptoolpy\esptool.py --chip esp32s3 --port COM4 --baud 921600 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 4MB 0x0 .pio\build\esp32-s3-zero\bootloader.bin 0x8000 .pio\build\esp32-s3-zero\partitions.bin 0xe000 $env:USERPROFILE\.platformio\packages\framework-arduinoespressif32\tools\partitions\boot_app0.bin 0x10000 .pio\build\esp32-s3-zero\firmware.bin
+pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 --port COMx --baud 921600 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 4MB 0x0 .pio/build/esp32-s3-zero/bootloader.bin 0x8000 .pio/build/esp32-s3-zero/partitions.bin 0xe000 %USERPROFILE%/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin 0x10000 .pio/build/esp32-s3-zero/firmware.bin
 ```
 
 Wenn `default_reset` nicht verbindet: BOOT halten, RESET kurz tippen, BOOT loslassen und denselben Aufruf mit `--before no_reset` starten, solange der Chip im Bootloader bleibt.
@@ -66,19 +69,18 @@ Wenn `default_reset` nicht verbindet: BOOT halten, RESET kurz tippen, BOOT losla
 Zum Mitlesen, ebenfalls nur bei beendetem Client:
 
 ```text
-python -m platformio device monitor
+pio device monitor
 ```
 
 Eine Zeile sieht so aus: `1023|640|0|210` (Slider 1 bis 4, Werte 0 bis 1023).
 
 ## Windows-Client
 
-Go 1.26 oder neuer. Auf diesem Rechner liegt es nicht im PATH, sondern unter `C:\Users\sch_jul2\sdk\go1.27.2\go\bin`. In PowerShell, im Ordner `client`:
+Voraussetzung: Go 1.26 oder neuer, `go` im PATH. Im Ordner `client`:
 
 ```text
-$env:Path = "C:\Users\sch_jul2\sdk\go1.27.2\go\bin;" + $env:Path
 go build -ldflags "-H windowsgui -s -w" -o soundmixer.exe ./cmd/soundmixer
-.\soundmixer.exe
+soundmixer.exe
 ```
 
 `-H windowsgui` startet die exe ohne Konsolenfenster. `cmd/soundmixer/rsrc.syso` bindet das Windows-Manifest ein und muss neben `main.go` liegen, sonst startet die Oberfläche nicht. Die exe erscheint im Infobereich. Läuft schon eine Instanz, beendet sich der zweite Start sofort. Vor dem neuen Start den alten Client über das Tray-Menü beenden.
@@ -96,8 +98,9 @@ go run ./cmd/soundmixer
 - Ein Gerät kann nur einem Slider gehören.
 - **Slider invertieren** tauscht oben und unten.
 - **Mit Windows starten** trägt die exe unter `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` ein.
+- **Logging aktivieren** schreibt Meldungen nach `%AppData%\SoundMixer\soundmixer.log`. Ohne Haken kommen keine neuen Zeilen dazu.
 - Solange ein Slider stillsteht, bleiben Tasten und der Windows-Regler wirksam. Die nächste Bewegung des Sliders setzt die Lautstärke wieder.
 
-Die Konfiguration liegt in `%AppData%\SoundMixer\config.json`. `com_port` ist `auto` (Suche nach VID `303A`). Ein fester Port wie `COM5` ist möglich. Meldungen stehen in `%AppData%\SoundMixer\soundmixer.log`.
+Die Konfiguration liegt in `%AppData%\SoundMixer\config.json`. `com_port` ist `auto` (Suche nach VID `303A`). Ein fester Port wie `COM5` ist möglich. `logging` steuert die Logdatei `%AppData%\SoundMixer\soundmixer.log` und ist ohne Angabe an.
 
 Ein zweiter Start erkennt die laufende Instanz und beendet sich.

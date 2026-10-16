@@ -31,6 +31,7 @@ func main() {
 		logx.Printf("config: %v", err)
 		return
 	}
+	logx.SetEnabled(store.Get().Logging)
 	if err := autostart.Set(store.Get().Autostart); err != nil {
 		logx.Printf("autostart: %v", err)
 	}

@@ -30,6 +30,7 @@ type Config struct {
 	LastPort      string   `json:"last_port"`
 	InvertSliders bool     `json:"invert_sliders"`
 	Autostart     bool     `json:"autostart"`
+	Logging       bool     `json:"logging"`
 	Sliders       []Slider `json:"sliders"`
 }
 
@@ -52,6 +53,7 @@ func Dir() (string, error) {
 func defaultConfig() Config {
 	return Config{
 		ComPort: "auto",
+		Logging: true,
 		Sliders: make([]Slider, SliderCount),
 	}
 }

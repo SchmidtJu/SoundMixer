@@ -164,6 +164,7 @@ func showSettings(owner walk.Form, store *config.Store, ctrl *audio.Controller, 
 	var dlg *walk.Dialog
 	var invert *walk.CheckBox
 	var auto *walk.CheckBox
+	var logging *walk.CheckBox
 	boxes := make([]*walk.ComboBox, config.SliderCount)
 
 	children := []Widget{
@@ -185,6 +186,7 @@ func showSettings(owner walk.Form, store *config.Store, ctrl *audio.Controller, 
 		Composite{Layout: Grid{Columns: 2}, Children: grid},
 		CheckBox{AssignTo: &invert, Text: "Slider invertieren", Checked: cfg.InvertSliders},
 		CheckBox{AssignTo: &auto, Text: "Mit Windows starten", Checked: cfg.Autostart},
+		CheckBox{AssignTo: &logging, Text: "Logging aktivieren", Checked: cfg.Logging},
 		Composite{
 			Layout: HBox{},
 			Children: []Widget{
@@ -192,7 +194,7 @@ func showSettings(owner walk.Form, store *config.Store, ctrl *audio.Controller, 
 				PushButton{
 					Text: "Speichern",
 					OnClicked: func() {
-						if saveSettings(dlg, store, cfg, boxes, ids, labels, invert, auto) {
+						if saveSettings(dlg, store, cfg, boxes, ids, labels, invert, auto, logging) {
 							dlg.Accept()
 						}
 					},
@@ -205,7 +207,7 @@ func showSettings(owner walk.Form, store *config.Store, ctrl *audio.Controller, 
 	if err := (Dialog{
 		AssignTo: &dlg,
 		Title:    "SoundMixer Einstellungen",
-		MinSize:  Size{Width: 480, Height: 280},
+		MinSize:  Size{Width: 480, Height: 310},
 		Layout:   VBox{},
 		Children: children,
 	}).Create(owner); err != nil {
@@ -237,7 +239,7 @@ func saveSettings(
 	previous config.Config,
 	boxes []*walk.ComboBox,
 	ids, labels []string,
-	invert, auto *walk.CheckBox,
+	invert, auto, logging *walk.CheckBox,
 ) bool {
 	next := previous
 	next.Sliders = make([]config.Slider, config.SliderCount)
@@ -260,6 +262,7 @@ func saveSettings(
 	}
 	next.InvertSliders = invert != nil && invert.Checked()
 	next.Autostart = auto != nil && auto.Checked()
+	next.Logging = logging != nil && logging.Checked()
 
 	if err := config.Validate(next); err != nil {
 		walk.MsgBox(owner, "SoundMixer", err.Error(), walk.MsgBoxIconWarning)
@@ -276,6 +279,7 @@ func saveSettings(
 		walk.MsgBox(owner, "SoundMixer", "Einstellungen konnten nicht gespeichert werden.", walk.MsgBoxIconError)
 		return false
 	}
+	logx.SetEnabled(next.Logging)
 	return true
 }
 
