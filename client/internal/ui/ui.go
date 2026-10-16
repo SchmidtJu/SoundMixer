@@ -9,6 +9,7 @@ import (
 
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
+	"github.com/lxn/win"
 
 	"soundmixer/internal/audio"
 	"soundmixer/internal/autostart"
@@ -92,13 +93,15 @@ func (a *App) Run() error {
 		return err
 	}
 
-	// Der Einstellungsdialog zeigt beim Schließen das unsichtbare Hauptfenster.
-	// Wegklicken würde sonst die ganze Tray-App beenden.
+	// Das Hauptfenster ist nur die Nachrichtenschleife für das Tray-Icon.
+	// Schließen (auch das vom Dialog ausgelöste) darf die App nicht beenden.
+	hideTrayWindow(mw)
 	mw.Closing().Attach(func(canceled *bool, _ walk.CloseReason) {
-		if !a.quitting {
-			*canceled = true
-			mw.SetVisible(false)
+		if a.quitting {
+			return
 		}
+		*canceled = true
+		hideTrayWindow(mw)
 	})
 
 	settingsAction := walk.NewAction()
@@ -149,7 +152,7 @@ func (a *App) openSettings() {
 	showSettings(owner, a.store, a.audio, a.currentLink())
 }
 
-func showSettings(owner walk.Form, store *config.Store, ctrl *audio.Controller, link serialconn.LinkStatus) {
+func showSettings(owner *walk.MainWindow, store *config.Store, ctrl *audio.Controller, link serialconn.LinkStatus) {
 	cfg := store.Get()
 	devices, err := ctrl.Devices()
 	statusText := link.Label()
@@ -204,13 +207,15 @@ func showSettings(owner walk.Form, store *config.Store, ctrl *audio.Controller, 
 		},
 	)
 
+	// Kein Owner: walk zeigt beim Schließen sonst das versteckte Hauptfenster
+	// (SWP_SHOWWINDOW) und beendet damit die Tray-App.
 	if err := (Dialog{
 		AssignTo: &dlg,
 		Title:    "SoundMixer Einstellungen",
 		MinSize:  Size{Width: 480, Height: 310},
 		Layout:   VBox{},
 		Children: children,
-	}).Create(owner); err != nil {
+	}).Create(nil); err != nil {
 		logx.Printf("einstellungen: %v", err)
 		walk.MsgBox(owner, "SoundMixer", "Einstellungen konnten nicht geöffnet werden.", walk.MsgBoxIconError)
 		return
@@ -221,16 +226,24 @@ func showSettings(owner walk.Form, store *config.Store, ctrl *audio.Controller, 
 		}
 		_ = boxes[i].SetCurrentIndex(indexOf(ids, sliderID(cfg, i)))
 	}
-	// walk zeigt beim Schließen den Owner (SWP_SHOWWINDOW). Das unsichtbare
-	// Hauptfenster würde sonst aufpoppen und die Tray-App beenden.
-	dlg.Closing().Attach(func(canceled *bool, _ walk.CloseReason) {
-		_ = dlg.SetOwner(nil)
-		owner.SetEnabled(true)
-		owner.SetVisible(false)
+	dlg.Starting().Attach(func() {
+		_ = dlg.Activate()
+		win.SetForegroundWindow(dlg.Handle())
 	})
 	dlg.Run()
 	owner.SetEnabled(true)
-	owner.SetVisible(false)
+	hideTrayWindow(owner)
+}
+
+// hideTrayWindow hält das Hauptfenster aus der Taskleiste und unsichtbar.
+func hideTrayWindow(mw *walk.MainWindow) {
+	hwnd := mw.Handle()
+	if hwnd == 0 {
+		return
+	}
+	ex := win.GetWindowLong(hwnd, win.GWL_EXSTYLE)
+	win.SetWindowLong(hwnd, win.GWL_EXSTYLE, ex|win.WS_EX_TOOLWINDOW)
+	mw.SetVisible(false)
 }
 
 func saveSettings(

@@ -9,10 +9,12 @@ static const int kGpioLogMs = 500;
 static const int kSamples = 9;
 static const int kHeartbeatMs = 1000;
 // Glättung muss erst klar und mehrere Messungen lang in dieselbe Richtung laufen.
-static const int kIdleBand = 36;
+// Ruhe 16.10., Rohspanne 0..4095: GP1 119, GP2 127, GP3 111, GP4 138.
+// Nach >>2 sind das höchstens 34 Stufen. Darunter bleibt der Wert stehen.
+static const int kIdleBand = 64;
 // Danach folgt die Lautstärke in kleineren Stufen, ohne auf jeden ADC-Zacken zu hören.
-static const int kTrackBand = 18;
-static const int kSettle = 4;
+static const int kTrackBand = 40;
+static const int kSettle = 6;
 
 struct Track {
   int smooth;
