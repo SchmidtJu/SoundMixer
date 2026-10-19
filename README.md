@@ -98,7 +98,7 @@ go run ./cmd/soundmixer
 - Ein Gerät kann nur einem Slider gehören.
 - **Slider invertieren** tauscht oben und unten.
 - **Mit Windows starten** trägt die exe unter `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` ein.
-- **Logging aktivieren** schreibt Meldungen nach `%AppData%\SoundMixer\soundmixer.log`. Ohne Haken kommen keine neuen Zeilen dazu.
+- **Logging aktivieren** schreibt Meldungen nach `%AppData%\SoundMixer\soundmixer.log`. Ohne Haken kommen keine neuen Zeilen dazu. Die Datei bleibt bei höchstens 5 MB, ältere Einträge fallen weg.
 - Solange ein Slider stillsteht, bleiben Tasten und der Windows-Regler wirksam. Die nächste Bewegung des Sliders setzt die Lautstärke wieder.
 
 Die Konfiguration liegt in `%AppData%\SoundMixer\config.json`. `com_port` ist `auto` (Suche nach VID `303A`). Ein fester Port wie `COM5` ist möglich. `logging` steuert die Logdatei `%AppData%\SoundMixer\soundmixer.log` und ist ohne Angabe an.

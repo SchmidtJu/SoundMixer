@@ -8,13 +8,16 @@ static const int kSliderCount = 4;
 static const int kGpioLogMs = 500;
 static const int kSamples = 9;
 static const int kHeartbeatMs = 1000;
-// Glättung muss erst klar und mehrere Messungen lang in dieselbe Richtung laufen.
-// Ruhe 16.10., Rohspanne 0..4095: GP1 119, GP2 127, GP3 111, GP4 138.
-// Nach >>2 sind das höchstens 34 Stufen. Darunter bleibt der Wert stehen.
-static const int kIdleBand = 64;
-// Danach folgt die Lautstärke in kleineren Stufen, ohne auf jeden ADC-Zacken zu hören.
-static const int kTrackBand = 40;
-static const int kSettle = 6;
+// Ruhe 19.10., Rohwerte 0..4095: typisch ±10, selten ±20, einzelne Ausreißer 100..230.
+// Nach >>2 und IIR bleibt das Rauschen unter 4. Ein Ausreißer schiebt smooth einmal
+// um etwa 15 und hält die Richtung nicht. Darunter bleibt der Wert stehen (~1,2 %).
+static const int kIdleBand = 12;
+// In Bewegung folgt die Lautstärke in etwa 1-%-Schritten (8 von 961).
+static const int kStep = 8;
+// Gleiche Richtung, bevor der Stillstand verlassen wird (~100 ms).
+static const int kSettle = 8;
+// Abstand unter kStep, bevor der Regler wieder als still gilt (~400 ms).
+static const int kStill = 30;
 
 struct Track {
   int smooth;
@@ -130,12 +133,14 @@ static void track(Track &t, int raw, bool &changed) {
     return;
   }
 
-  if (dist < kTrackBand) {
+  // Langsames Schieben bleibt in diesem Modus. Erst nach längerer Ruhe zurück,
+  // sonst verlangt jeder kleine Schritt wieder die grobe Stillstandsschwelle.
+  if (dist < kStep) {
     t.hold = 0;
     if (t.rest < 255) {
       t.rest++;
     }
-    if (t.rest < kSettle) {
+    if (t.rest < kStill) {
       return;
     }
     t.moving = false;
@@ -147,18 +152,7 @@ static void track(Track &t, int raw, bool &changed) {
     return;
   }
 
-  // Gegenrichtung unter der Stillstandsschwelle ist Reststreuung, kein neuer Zug.
-  if (up != t.up && dist < kIdleBand) {
-    if (t.rest < 255) {
-      t.rest++;
-    }
-    if (t.rest >= kSettle) {
-      t.moving = false;
-      t.rest = 0;
-    }
-    return;
-  }
-
+  // Gegenrichtung ab kStep ist eine echte Umkehr und folgt sofort.
   t.up = up;
   t.rest = 0;
   t.locked = t.smooth;

@@ -4,6 +4,8 @@ package audio
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +17,10 @@ import (
 	"soundmixer/internal/config"
 	"soundmixer/internal/logx"
 )
+
+// applyInterval begrenzt das Setzen der Windows-Lautstärke auf etwa einen Schreibvorgang
+// pro halbe Sekunde. Zwischendurch gemerkte Pegel gelten beim nächsten Schreibvorgang.
+const applyInterval = 500 * time.Millisecond
 
 // Device ist ein aktives Windows-Wiedergabegerät.
 type Device struct {
@@ -51,9 +57,11 @@ type Controller struct {
 	stop    chan struct{}
 	stopped sync.Once
 
-	vols  map[string]*wca.IAudioEndpointVolume
-	last  [config.SliderCount]appliedState
-	logAt map[string]time.Time
+	vols      map[string]*wca.IAudioEndpointVolume
+	last      [config.SliderCount]appliedState
+	logAt     map[string]time.Time
+	nextApply time.Time
+	waiting   bool
 }
 
 func New() *Controller {
@@ -170,16 +178,48 @@ func (c *Controller) flush(enum *wca.IMMDeviceEnumerator) {
 			c.mu.Unlock()
 			return
 		}
+		now := time.Now()
+		if !applyDue(now, c.nextApply) {
+			if !c.waiting {
+				c.waiting = true
+				wait := c.nextApply.Sub(now)
+				time.AfterFunc(wait, c.wakeLater)
+			}
+			c.mu.Unlock()
+			return
+		}
 		snap := c.sliders
 		c.dirty = false
+		c.waiting = false
+		c.nextApply = now.Add(applyInterval)
 		c.mu.Unlock()
 		c.apply(enum, snap)
+	}
+}
+
+func applyDue(now, next time.Time) bool {
+	return next.IsZero() || !now.Before(next)
+}
+
+func (c *Controller) wakeLater() {
+	c.mu.Lock()
+	c.waiting = false
+	c.mu.Unlock()
+	select {
+	case <-c.stop:
+		return
+	default:
+	}
+	select {
+	case c.wake <- struct{}{}:
+	default:
 	}
 }
 
 func (c *Controller) apply(enum *wca.IMMDeviceEnumerator, snap [config.SliderCount]sliderState) {
 	defaultID := ""
 	defaultKnown := false
+	wrote := false
 	for i, slider := range snap {
 		if !slider.active {
 			c.last[i] = appliedState{}
@@ -209,7 +249,32 @@ func (c *Controller) apply(enum *wca.IMMDeviceEnumerator, snap [config.SliderCou
 			continue
 		}
 		c.last[i] = appliedState{deviceID: target, level: slider.level, ok: true}
+		wrote = true
 	}
+	if wrote {
+		logx.Printf("%s", formatLevels(snap))
+	}
+}
+
+func formatLevels(snap [config.SliderCount]sliderState) string {
+	var b strings.Builder
+	for i, slider := range snap {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "%d=%d%%", i+1, percent(slider.level))
+	}
+	return b.String()
+}
+
+func percent(level float32) int {
+	if level < 0 {
+		level = 0
+	}
+	if level > 1 {
+		level = 1
+	}
+	return int(math.Round(float64(level) * 100))
 }
 
 func (c *Controller) setScalar(enum *wca.IMMDeviceEnumerator, id string, level float32) error {
