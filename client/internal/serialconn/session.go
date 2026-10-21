@@ -4,6 +4,7 @@ package serialconn
 
 import (
 	"context"
+	"io"
 	"strings"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"soundmixer/internal/proto"
 	"soundmixer/internal/scale"
 )
+
+const heartbeatTimeout = 3 * time.Second
 
 // LinkStatus describes the USB link for the tray icon and the settings window.
 type LinkStatus struct {
@@ -74,16 +77,22 @@ func Run(ctx context.Context, store *config.Store, ctrl *audio.Controller, statu
 			continue
 		}
 
-		_ = port.SetReadTimeout(500 * time.Millisecond)
-		if status != nil {
-			status(LinkStatus{Connected: true, Port: portName})
+		if err := port.SetReadTimeout(500 * time.Millisecond); err != nil {
+			logx.Printf("read timeout: %v", err)
+			_ = port.Close()
+			Sleep(ctx, RetryPause)
+			continue
 		}
-		if err := store.RememberPort(portName); err != nil {
-			logx.Printf("remember COM: %v", err)
-		}
-		logx.Printf("connected to %s", portName)
 
-		readPort(ctx, port, store, ctrl, &gen, &force, &applied, &have)
+		readPort(ctx, port, store, ctrl, &gen, &force, &applied, &have, heartbeatTimeout, func() {
+			if status != nil {
+				status(LinkStatus{Connected: true, Port: portName})
+			}
+			if err := store.RememberPort(portName); err != nil {
+				logx.Printf("remember COM: %v", err)
+			}
+			logx.Printf("connected to %s", portName)
+		})
 		_ = port.Close()
 		if status != nil && ctx.Err() == nil {
 			status(LinkStatus{Detail: "Disconnected – looking for ESP32…"})
@@ -95,18 +104,26 @@ func Run(ctx context.Context, store *config.Store, ctrl *audio.Controller, statu
 
 func readPort(
 	ctx context.Context,
-	port serial.Port,
+	port io.Reader,
 	store *config.Store,
 	ctrl *audio.Controller,
 	gen *uint64,
 	force *bool,
 	applied *[config.SliderCount]float32,
 	have *[config.SliderCount]bool,
+	timeout time.Duration,
+	onReady func(),
 ) {
 	buf := make([]byte, 256)
 	var line []byte
+	lastValid := time.Now()
+	ready := false
 
 	for ctx.Err() == nil {
+		if time.Since(lastValid) >= timeout {
+			logx.Printf("serial: no valid slider line for %s", timeout)
+			return
+		}
 		cfg, g := store.Snapshot()
 		if g != *gen {
 			*gen = g
@@ -138,6 +155,13 @@ func readPort(
 			if err != nil {
 				continue
 			}
+			lastValid = time.Now()
+			if !ready {
+				ready = true
+				if onReady != nil {
+					onReady()
+				}
+			}
 			push(ctrl, cfg, values, force, applied, have)
 		}
 		if len(line) > 1024 {
@@ -156,7 +180,7 @@ func push(
 ) {
 	for i := 0; i < config.SliderCount; i++ {
 		level := scale.Level(values[i], cfg.InvertSliders)
-		if !*force && have[i] && abs(level-applied[i]) < scale.Epsilon {
+		if !*force && have[i] && !levelChanged(applied[i], level) {
 			continue
 		}
 		id := ""
@@ -168,6 +192,13 @@ func push(
 		have[i] = true
 	}
 	*force = false
+}
+
+func levelChanged(previous, next float32) bool {
+	if previous == next {
+		return false
+	}
+	return next == 0 || next == 1 || abs(next-previous) >= scale.Epsilon
 }
 
 func indexByte(b []byte, c byte) int {

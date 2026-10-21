@@ -101,7 +101,7 @@ func Load() (*Store, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			if err := store.writeLocked(); err != nil {
+			if err := store.writeLocked(store.cfg); err != nil {
 				return nil, err
 			}
 			return store, nil
@@ -139,9 +139,13 @@ func (s *Store) Save(cfg Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cfg.LastPort = s.cfg.LastPort
+	cfg = clone(cfg)
+	if err := s.writeLocked(cfg); err != nil {
+		return err
+	}
 	s.cfg = cfg
 	s.gen++
-	return s.writeLocked()
+	return nil
 }
 
 // RememberPort stores the last working COM port without reapplying the sliders.
@@ -154,13 +158,18 @@ func (s *Store) RememberPort(port string) error {
 	if s.cfg.LastPort == port {
 		return nil
 	}
-	s.cfg.LastPort = port
-	return s.writeLocked()
+	next := clone(s.cfg)
+	next.LastPort = port
+	if err := s.writeLocked(next); err != nil {
+		return err
+	}
+	s.cfg = next
+	return nil
 }
 
-func (s *Store) writeLocked() error {
-	normalize(&s.cfg)
-	data, err := json.MarshalIndent(s.cfg, "", "  ")
+func (s *Store) writeLocked(cfg Config) error {
+	normalize(&cfg)
+	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}

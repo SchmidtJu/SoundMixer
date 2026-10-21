@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -18,9 +19,9 @@ import (
 	"soundmixer/internal/logx"
 )
 
-// applyInterval limits Windows volume writes to about one write every half second.
+// applyInterval limits Windows volume writes to one write every 100 ms.
 // Levels stored in between are applied on the next write.
-const applyInterval = 500 * time.Millisecond
+const applyInterval = 100 * time.Millisecond
 
 // Device is an active Windows playback device.
 type Device struct {
@@ -121,8 +122,15 @@ func (c *Controller) Stop() {
 }
 
 func (c *Controller) Run() {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	if err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED); err != nil {
-		logx.Printf("COM-Init: %v", err)
+		// go-ole also returns S_FALSE (already initialized) as an error.
+		var oleErr *ole.OleError
+		if !errors.As(err, &oleErr) || oleErr.Code() != 1 {
+			logx.Printf("COM-Init: %v", err)
+			return
+		}
 	}
 	defer ole.CoUninitialize()
 
@@ -136,11 +144,28 @@ func (c *Controller) Run() {
 			enum.Release()
 		}
 	}()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-c.stop:
 			return
+		case <-ticker.C:
+			enum = ensureEnumerator(enum)
+			if enum == nil {
+				continue
+			}
+			devices, err := listDevices(enum)
+			if err != nil {
+				c.logLimited("devices", err)
+				continue
+			}
+			c.invalidateDisconnected(devices)
+			c.mu.Lock()
+			c.dirty = true
+			c.mu.Unlock()
+			c.flush(enum)
 		case resp := <-c.listReq:
 			enum = ensureEnumerator(enum)
 			if enum == nil {
@@ -217,6 +242,26 @@ func (c *Controller) wakeLater() {
 }
 
 func (c *Controller) apply(enum *wca.IMMDeviceEnumerator, snap [config.SliderCount]sliderState) {
+	c.applyTargets(snap, func() (string, error) { return defaultEndpointID(enum) },
+		func(id string, level float32) error { return c.setScalar(enum, id, level) })
+}
+
+func (c *Controller) invalidateDisconnected(devices []Device) {
+	active := make(map[string]bool, len(devices))
+	for _, device := range devices {
+		active[device.ID] = true
+	}
+	for i, last := range c.last {
+		if last.ok && !active[last.deviceID] {
+			c.releaseVolume(last.deviceID)
+			c.last[i] = appliedState{}
+		}
+	}
+}
+
+func (c *Controller) applyTargets(snap [config.SliderCount]sliderState,
+	resolveDefault func() (string, error), setScalar func(string, float32) error,
+) {
 	defaultID := ""
 	defaultKnown := false
 	wrote := false
@@ -228,7 +273,7 @@ func (c *Controller) apply(enum *wca.IMMDeviceEnumerator, snap [config.SliderCou
 		target := slider.deviceID
 		if target == config.DefaultDeviceID {
 			if !defaultKnown {
-				id, err := defaultEndpointID(enum)
+				id, err := resolveDefault()
 				if err != nil {
 					c.logLimited("default", err)
 					continue
@@ -244,7 +289,8 @@ func (c *Controller) apply(enum *wca.IMMDeviceEnumerator, snap [config.SliderCou
 		if c.last[i].ok && c.last[i].deviceID == target && abs(c.last[i].level-slider.level) < 0.001 {
 			continue
 		}
-		if err := c.setScalar(enum, target, slider.level); err != nil {
+		if err := setScalar(target, slider.level); err != nil {
+			c.last[i] = appliedState{}
 			c.logLimited(target, err)
 			continue
 		}

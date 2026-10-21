@@ -31,10 +31,10 @@ func TestApplyDue(t *testing.T) {
 		t.Fatal("the first write should apply immediately")
 	}
 	next := now.Add(applyInterval)
-	if applyDue(now.Add(400*time.Millisecond), next) {
-		t.Fatal("a second write inside the half second should not apply")
+	if applyDue(now.Add(99*time.Millisecond), next) {
+		t.Fatal("a second write before 100 ms should not apply")
 	}
-	if !applyDue(next, next) {
-		t.Fatal("the stored level should apply after half a second")
+	if !applyDue(now.Add(100*time.Millisecond), next) {
+		t.Fatal("the stored level should apply at 100 ms")
 	}
 }

@@ -3,8 +3,50 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
+
+func TestFailedSaveDoesNotPublishConfiguration(t *testing.T) {
+	for _, failure := range []string{"write", "rename"} {
+		t.Run(failure, func(t *testing.T) {
+			t.Setenv("APPDATA", t.TempDir())
+			store, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, generation := store.Snapshot()
+			if failure == "write" {
+				// A directory at the temporary file path makes WriteFile fail.
+				if err := os.Mkdir(store.path+".tmp", 0o755); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				// A nonempty destination directory makes Rename fail.
+				store.path = filepath.Join(filepath.Dir(store.path), "blocked")
+				if err := os.Mkdir(store.path, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(store.path, "keep"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			next := store.Get()
+			next.InvertSliders = true
+			next.Sliders[0] = Slider{DeviceID: "new-device"}
+			if err := store.Save(next); err == nil {
+				t.Fatal("expected save failure")
+			}
+			if err := store.RememberPort("COM99"); err == nil {
+				t.Fatal("expected remember failure")
+			}
+			after, gotGeneration := store.Snapshot()
+			if !reflect.DeepEqual(before, after) || gotGeneration != generation {
+				t.Fatalf("failed write changed live state: %+v, generation=%d", after, gotGeneration)
+			}
+		})
+	}
+}
 
 func TestValidateRejectsDuplicates(t *testing.T) {
 	cfg := defaultConfig()

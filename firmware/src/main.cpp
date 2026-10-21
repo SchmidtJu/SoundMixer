@@ -48,6 +48,21 @@ static int readAdcRaw(int pin) {
   return analogRead(pin);
 }
 
+static bool sendLine(const char *line, size_t length) {
+  // Nur ganze Zeilen einreihen. Bei Rückstau weiter messen statt auf USB warten.
+  if (!Serial || Serial.availableForWrite() < (int)length) {
+    return false;
+  }
+  return Serial.write((const uint8_t *)line, length) == length;
+}
+
+static bool sendSliders(const Track *trackers) {
+  char line[32];
+  int length = snprintf(line, sizeof(line), "%d|%d|%d|%d\n", trackers[0].locked,
+                        trackers[1].locked, trackers[2].locked, trackers[3].locked);
+  return length > 0 && (size_t)length < sizeof(line) && sendLine(line, (size_t)length);
+}
+
 static void logGpioInputs() {
   static uint32_t lastMs = 0;
   uint32_t now = millis();
@@ -55,8 +70,12 @@ static void logGpioInputs() {
     return;
   }
   lastMs = now;
-  Serial.printf("gpio 1=%d 2=%d 3=%d 4=%d\n", readAdcRaw(1), readAdcRaw(2), readAdcRaw(3),
-                readAdcRaw(4));
+  char line[64];
+  int length = snprintf(line, sizeof(line), "gpio 1=%d 2=%d 3=%d 4=%d\n", readAdcRaw(1),
+                        readAdcRaw(2), readAdcRaw(3), readAdcRaw(4));
+  if (length > 0 && (size_t)length < sizeof(line)) {
+    sendLine(line, (size_t)length);
+  }
 }
 
 static int readSlider(int pin) {
@@ -86,10 +105,12 @@ void setup() {
   }
 
   Serial.begin(115200);
-  // Nicht blockieren, wenn der PC den COM-Port noch nicht geöffnet hat.
-  Serial.setTxTimeoutMs(0);
+  // Null läuft im HWCDC-Wartezähler älterer Cores über. Zusätzlich vor jedem
+  // Versand den freien Platz prüfen; der positive Timeout begrenzt den Fehlerfall.
+  Serial.setTxTimeoutMs(10);
   delay(200);
-  Serial.println("gpio pin1-4=adc");
+  const char banner[] = "gpio pin1-4=adc\n";
+  sendLine(banner, sizeof(banner) - 1);
 }
 
 static void track(Track &t, int raw, bool &changed) {
@@ -163,6 +184,7 @@ void loop() {
   static Track trackers[kSliderCount];
   static uint8_t prime = 8;
   static uint32_t lastSendMs = 0;
+  static bool pending = true;
 
   logGpioInputs();
 
@@ -182,9 +204,6 @@ void loop() {
       for (int i = 0; i < kSliderCount; i++) {
         trackers[i].locked = trackers[i].smooth;
       }
-      Serial.printf("%d|%d|%d|%d\n", trackers[0].locked, trackers[1].locked, trackers[2].locked,
-                    trackers[3].locked);
-      lastSendMs = millis();
     }
     return;
   }
@@ -195,9 +214,9 @@ void loop() {
   }
 
   uint32_t now = millis();
-  if (changed || now - lastSendMs >= kHeartbeatMs) {
-    Serial.printf("%d|%d|%d|%d\n", trackers[0].locked, trackers[1].locked, trackers[2].locked,
-                  trackers[3].locked);
+  pending = pending || changed;
+  if ((pending || now - lastSendMs >= kHeartbeatMs) && sendSliders(trackers)) {
+    pending = false;
     lastSendMs = now;
   }
 }
