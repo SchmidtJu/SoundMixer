@@ -4,6 +4,8 @@ A USB volume mixer for Windows. Four slide potentiometers on an [ESP32-S3-Zero](
 
 The app runs on Windows 10 and Windows 11. The board talks to the PC over the same USB-C cable used for programming. There is no separate USB-serial chip and no Wi-Fi.
 
+![SoundMixer with four sliders in its printed enclosure](docs/df667655-0f79-4571-8b5d-21c101c766cc.jpg)
+
 ```text
 slide pots  →  ESP32-S3-Zero  →  USB serial  →  tray app  →  Windows playback devices
 ```
@@ -15,7 +17,7 @@ slide pots  →  ESP32-S3-Zero  →  USB serial  →  tray app  →  Windows pla
 | Qty | Part | Notes |
 | --- | --- | --- |
 | 1 | [ESP32-S3-Zero](https://amzn.eu/d/0aSRMNqI) | ESP32-S3FH4R2, 4 MB flash, native USB-C. The linked board is a Heemol ESP32-S3 Mini with this pinout. |
-| 4 | [Slide potentiometer, 10 kΩ linear (B10K)](https://amzn.eu/d/0g2a3Muu) | 75 mm length, 60mm travel. The linked pack is a dual-gang B103; use one gang (three pins) per slider. Linear (B), not audio taper (A). |
+| 4 | [Slide potentiometer, 10 kΩ linear (B10K)](https://amzn.eu/d/0g2a3Muu) | 75 mm length, 60 mm travel. The linked pack is a dual-gang B103; use one gang (three pins) per slider. Linear (B), not audio taper (A). |
 | 1 | USB-C cable | Must carry data. Charge-only cables never show a COM port. |
 | | Wire | One shared ground, one shared 3.3 V, one wiper wire per slider. |
 
@@ -53,7 +55,7 @@ Leave these pins unconnected:
 
 GP3 is a strapping pin. It is sampled while the chip resets, and a high level there can stop a flash from starting. Before you flash, slide control 3 all the way to the GND end.
 
-The ADC, at 11 dB attenuation, reaches full scale around 3.1 V. A pot tied to 3.3 V therefore sits a little short of the top code. The firmware filters the reading, and the app treats a small band at each end as 0 % and 100 %, so both stops are still reachable.
+The ADC's nominal measurement range at 11 dB attenuation extends to about 3.1 V ([Espressif documentation](https://docs.espressif.com/projects/esp-idf/en/v4.4/esp32s3/api-reference/peripherals/adc.html)). With a pot supplied from 3.3 V, the reading can therefore saturate before the slider reaches its upper stop. The firmware filters the reading, and the app maps the lowest and highest 31 counts of the 0–1023 range to 0 % and 100 %. This makes both volume limits reliably reachable, with a small flat region near each end.
 
 ### Pinout
 
@@ -72,6 +74,21 @@ Front, left row, top to bottom. Slider 1 is GP1 through slider 4 on GP4; the wir
 | GP5, GP6 | Free |
 
 The two onboard buttons are BOOT (marked B, wired to GPIO0) and RESET (marked R).
+
+### Enclosure and 3D printing
+
+The enclosure and slider knobs shown above are included in [model/](model/):
+
+| Files | Contents |
+| --- | --- |
+| [Case.stl](model/stl/Case.stl), [Top.stl](model/stl/Top.stl), [Bottom.stl](model/stl/Bottom.stl) | Enclosure parts |
+| [Knob.stl](model/stl/Knob.stl) | Slider knob; four are needed |
+| [usb lid.stl](model/stl/usb%20lid.stl) | USB opening cover |
+| [SoundMixer.3mf](model/SoundMixer.3mf) | 3MF project |
+| [SoundMixer.f3d](model/SoundMixer.f3d) | Editable Autodesk Fusion design |
+| [icons/](model/icons/) | SVG artwork for the slider labels |
+
+Check the model dimensions against your sliders and board before printing. Review the printer, material, and slicing settings in your slicer before using the 3MF project. The icons are labels; playback-device assignments are configured in the app.
 
 ## Software
 
@@ -101,7 +118,7 @@ pio run
 pio device list
 ```
 
-If `pio` is not on the PATH, use `python -m platformio` in place of `pio` for every command below.
+If `pio` is not on the PATH, open the PlatformIO terminal in VS Code, or use `python -m platformio` in place of `pio` with the Python environment where PlatformIO is installed.
 
 Note the COM port of the device whose vendor ID is `303A`. The steps below call it `COM5`; use the port from the list.
 
@@ -110,10 +127,19 @@ Note the COM port of the device whose vendor ID is `303A`. The steps below call 
 PowerShell, from the `firmware` folder:
 
 ```powershell
-pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32s3 --port COM5 --baud 921600 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 4MB 0x0 .pio/build/esp32-s3-zero/bootloader.bin 0x8000 .pio/build/esp32-s3-zero/partitions.bin 0xe000 "$env:USERPROFILE/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin" 0x10000 .pio/build/esp32-s3-zero/firmware.bin
+pio pkg exec -p tool-esptoolpy -- esptool.py `
+  --chip esp32s3 --port COM5 --baud 921600 `
+  --before default_reset --after hard_reset `
+  write_flash --flash_mode dio --flash_freq 80m --flash_size 4MB `
+  0x0 .pio/build/esp32-s3-zero/bootloader.bin `
+  0x8000 .pio/build/esp32-s3-zero/partitions.bin `
+  0xe000 "$env:USERPROFILE/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin" `
+  0x10000 .pio/build/esp32-s3-zero/firmware.bin
 ```
 
-Command Prompt is the same command with `%USERPROFILE%` instead of `$env:USERPROFILE`.
+The `boot_app0.bin` path assumes PlatformIO's default package directory. If you configured a different directory, replace that path with the location of `framework-arduinoespressif32/tools/partitions/boot_app0.bin` in your installation. PowerShell requires each continuation backtick to be the last character on its line.
+
+For Command Prompt, join the lines into one command, remove the continuation backticks, and replace `$env:USERPROFILE` with `%USERPROFILE%`.
 
 If that connect attempt fails, put the chip into the bootloader by hand and flash before it leaves that mode:
 
@@ -169,6 +195,8 @@ go run ./cmd/soundmixer
 
 Left-click the tray icon, or choose **Settings…** from the menu. **Quit** closes the app.
 
+![SoundMixer settings with four playback-device assignments](docs/Screenshot%202026-10-21%20163016.png)
+
 Assign each slider in the settings window, then click **Save**:
 
 - Pick a playback device, **Unassigned**, or **Windows default device**.
@@ -203,7 +231,9 @@ Settings are stored in `%AppData%\SoundMixer\config.json`. The folder is created
 }
 ```
 
-`com_port` is `auto`, which selects the USB device with vendor ID `303A`. Set it to a fixed name such as `COM5` if another Espressif board is also plugged in. `last_port` is filled in by the app and is the fallback when the vendor search finds nothing.
+`com_port` defaults to `auto`, which searches for USB devices with vendor ID `303A`. If several match, the app prefers `last_port` when it is among them; otherwise it selects the first match. The app remembers the working port in `last_port` and also uses it as a fallback when the vendor search finds nothing, provided that port is still listed.
+
+Set `com_port` to a name such as `COM5` to prefer that port, for example when another Espressif board is plugged in. This is a preference, not a strict binding: if the specified port is absent, the app continues with automatic discovery.
 
 `device_id` is the Windows endpoint id. Leave both fields empty for an unassigned slider. `system.default` is the Windows default device. You can edit the file while the app is closed. With the app open, use the settings window so the running mixer picks up the change.
 
@@ -222,7 +252,7 @@ Logging is on unless you clear **Enable logging**. The file is `%AppData%\SoundM
 | A number stays near 0 or near 1023 | That end is tied to the wrong rail, or the wiper is shorted to an end pin. |
 | Tray icon missing | Check the notification overflow (^). Confirm `rsrc.syso` was beside `main.go` when you built. |
 | “SoundMixer is already running.” | The app is already in the tray. Quit it with **Quit**, then start the new exe. |
-| Status stays “Disconnected – looking for ESP32…” | Board unplugged, cable is charge-only, or firmware was not flashed. `com_port` in the config may also name a port that is not present. |
+| Status stays “Disconnected – looking for ESP32…” | Check that the board is plugged in with a data cable and the firmware is flashed. Verify the COM port with `pio device list`; if `com_port` names an existing but unrelated device, set it back to `auto`. |
 | “COMx is busy or not ready” | Another program has the port (serial monitor, a second copy, a flashing tool). |
 | Slider moves, Windows volume does not | That slider is still **Unassigned**, or it is assigned to a device that is **(disconnected)**. |
 | Top or bottom of the travel feels flat | Expected. A small dead zone at each end makes 0 % and 100 % reliable. |
@@ -234,5 +264,7 @@ Logging is on unless you clear **Enable logging**. The file is `%AppData%\SoundM
 | --- | --- |
 | `firmware/` | PlatformIO project. Firmware source is `firmware/src/main.cpp`. |
 | `client/` | Go module. Entry point is `client/cmd/soundmixer`. |
+| `model/` | Enclosure STL files, 3MF project, editable Fusion design, and SVG labels. |
+| `docs/` | Project photos, app screenshot, and hardware diagrams. |
 | `docs/wiring.png` | Wiring diagram used above. |
 | `docs/esp32-s3-zero-pinout.jpg` | Pinout drawing used above. |
