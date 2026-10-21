@@ -11,7 +11,7 @@ func TestValidateRejectsDuplicates(t *testing.T) {
 	cfg.Sliders[0] = Slider{DeviceID: "dev-a"}
 	cfg.Sliders[1] = Slider{DeviceID: "dev-a"}
 	if err := Validate(cfg); err == nil {
-		t.Fatal("duplikat erwartet")
+		t.Fatal("expected a duplicate")
 	}
 	cfg.Sliders[1] = Slider{DeviceID: DefaultDeviceID}
 	cfg.Sliders[2] = Slider{}
@@ -20,7 +20,7 @@ func TestValidateRejectsDuplicates(t *testing.T) {
 	}
 	cfg.Sliders[3] = Slider{DeviceID: DefaultDeviceID}
 	if err := Validate(cfg); err == nil {
-		t.Fatal("doppeltes standardgerät erwartet")
+		t.Fatal("expected a duplicate default device")
 	}
 }
 
@@ -39,7 +39,7 @@ func TestLoadRoundTrip(t *testing.T) {
 
 	cfg.InvertSliders = true
 	cfg.Logging = false
-	cfg.Sliders[0] = Slider{DeviceID: "dev-a", DeviceName: "Lautsprecher"}
+	cfg.Sliders[0] = Slider{DeviceID: "dev-a", DeviceName: "Speakers"}
 	if err := store.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestLoadRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, gen := store.Snapshot(); gen != 1 {
-		t.Fatalf("remember darf gen nicht erhöhen, ist %d", gen)
+		t.Fatalf("remember must not increase gen, got %d", gen)
 	}
 
 	again, err := Load()
@@ -59,7 +59,7 @@ func TestLoadRoundTrip(t *testing.T) {
 	}
 	got := again.Get()
 	if !got.InvertSliders || got.Logging || got.Sliders[0].DeviceID != "dev-a" || got.LastPort != "COM7" {
-		t.Fatalf("geladen: %+v", got)
+		t.Fatalf("loaded: %+v", got)
 	}
 	if _, err := os.Stat(filepath.Join(dir, appDirName, fileName)); err != nil {
 		t.Fatal(err)
@@ -82,6 +82,6 @@ func TestMissingLoggingStaysOn(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !store.Get().Logging {
-		t.Fatal("fehlendes logging muss an bleiben")
+		t.Fatal("missing logging must stay on")
 	}
 }

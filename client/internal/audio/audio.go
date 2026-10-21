@@ -18,11 +18,11 @@ import (
 	"soundmixer/internal/logx"
 )
 
-// applyInterval begrenzt das Setzen der Windows-Lautstärke auf etwa einen Schreibvorgang
-// pro halbe Sekunde. Zwischendurch gemerkte Pegel gelten beim nächsten Schreibvorgang.
+// applyInterval limits Windows volume writes to about one write every half second.
+// Levels stored in between are applied on the next write.
 const applyInterval = 500 * time.Millisecond
 
-// Device ist ein aktives Windows-Wiedergabegerät.
+// Device is an active Windows playback device.
 type Device struct {
 	ID   string
 	Name string
@@ -45,8 +45,8 @@ type listResult struct {
 	err     error
 }
 
-// Controller setzt die Master-Lautstärke von Wiedergabe-Endpunkten.
-// Alle COM-Aufrufe laufen auf der Goroutine von Run.
+// Controller sets the master volume of playback endpoints.
+// Every COM call runs on the goroutine started by Run.
 type Controller struct {
 	mu      sync.Mutex
 	sliders [config.SliderCount]sliderState
@@ -74,8 +74,8 @@ func New() *Controller {
 	}
 }
 
-// UpdateSlider merkt sich Ziel und Pegel. active false gibt den Regler frei.
-// Der Aufruf blockiert nicht und schreibt die Lautstärke nur, wenn sich etwas ändert.
+// UpdateSlider stores the target and level. active false releases the slider.
+// The call does not block, and the volume is written only when something changed.
 func (c *Controller) UpdateSlider(index int, deviceID string, level float32, active bool) {
 	if index < 0 || index >= config.SliderCount {
 		return
@@ -100,19 +100,19 @@ func (c *Controller) UpdateSlider(index int, deviceID string, level float32, act
 	}
 }
 
-// Devices liefert die gerade aktiven Wiedergabegeräte.
+// Devices returns the playback devices that are active right now.
 func (c *Controller) Devices() ([]Device, error) {
 	resp := make(chan listResult, 1)
 	select {
 	case c.listReq <- resp:
 	case <-time.After(2 * time.Second):
-		return nil, errors.New("audio nicht bereit")
+		return nil, errors.New("audio not ready")
 	}
 	select {
 	case result := <-resp:
 		return result.devices, result.err
 	case <-time.After(2 * time.Second):
-		return nil, errors.New("audio zeitüberschreitung")
+		return nil, errors.New("audio timed out")
 	}
 }
 
@@ -144,7 +144,7 @@ func (c *Controller) Run() {
 		case resp := <-c.listReq:
 			enum = ensureEnumerator(enum)
 			if enum == nil {
-				resp <- listResult{err: errors.New("kein Audio-Enumerator")}
+				resp <- listResult{err: errors.New("no audio enumerator")}
 				continue
 			}
 			devices, listErr := listDevices(enum)
@@ -333,7 +333,7 @@ func (c *Controller) logLimited(key string, err error) {
 		return
 	}
 	c.logAt[key] = now
-	logx.Printf("Lautstärke %s: %v", key, err)
+	logx.Printf("volume %s: %v", key, err)
 }
 
 func newEnumerator() (*wca.IMMDeviceEnumerator, error) {
@@ -347,7 +347,7 @@ func newEnumerator() (*wca.IMMDeviceEnumerator, error) {
 
 func listDevices(enum *wca.IMMDeviceEnumerator) ([]Device, error) {
 	if enum == nil {
-		return nil, errors.New("kein Audio-Enumerator")
+		return nil, errors.New("no audio enumerator")
 	}
 	var collection *wca.IMMDeviceCollection
 	if err := enum.EnumAudioEndpoints(wca.ERender, wca.DEVICE_STATE_ACTIVE, &collection); err != nil {
@@ -405,7 +405,7 @@ func findDevice(enum *wca.IMMDeviceEnumerator, id string) (*wca.IMMDevice, error
 		}
 		return dev, nil
 	}
-	return nil, errors.New("gerät nicht verbunden")
+	return nil, errors.New("device not connected")
 }
 
 func defaultEndpointID(enum *wca.IMMDeviceEnumerator) (string, error) {
@@ -441,7 +441,7 @@ func friendlyName(dev *wca.IMMDevice) string {
 
 func variantString(pv *wca.PROPVARIANT) string {
 	if pv.VT == ole.VT_LPWSTR && pv.Val != 0 {
-		// String() gibt den COM-Speicher frei.
+		// String() releases the COM memory.
 		return pv.String()
 	}
 	_ = ole.VariantClear(&pv.VARIANT)

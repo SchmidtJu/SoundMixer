@@ -46,7 +46,7 @@ func main() {
 	go serialconn.Run(ctx, store, ctrl, app.SetStatus)
 
 	if err := app.Run(); err != nil {
-		logx.Printf("oberfläche: %v", err)
+		logx.Printf("ui: %v", err)
 	}
 	cancel()
 	ctrl.Stop()

@@ -16,15 +16,15 @@ const (
 	fileName        = "config.json"
 )
 
-// Slider ordnet einen Regler einem Windows-Ausgabegerät zu.
-// DeviceID ist die stabile Endpoint-ID. Leer heißt nicht zugewiesen.
-// DefaultDeviceID folgt dem aktuellen Windows-Standardgerät.
+// Slider maps one control to a Windows playback device.
+// DeviceID is the stable endpoint ID. Empty means unassigned.
+// DefaultDeviceID follows the current Windows default device.
 type Slider struct {
 	DeviceID   string `json:"device_id"`
 	DeviceName string `json:"device_name"`
 }
 
-// Config liegt unter %AppData%\SoundMixer\config.json.
+// Config is stored in %AppData%\SoundMixer\config.json.
 type Config struct {
 	ComPort       string   `json:"com_port"`
 	LastPort      string   `json:"last_port"`
@@ -34,7 +34,7 @@ type Config struct {
 	Sliders       []Slider `json:"sliders"`
 }
 
-// Store hält die Konfiguration im Speicher und auf der Platte.
+// Store keeps the configuration in memory and on disk.
 type Store struct {
 	mu   sync.RWMutex
 	cfg  Config
@@ -70,7 +70,7 @@ func normalize(cfg *Config) {
 	}
 }
 
-// Validate lehnt doppelte Gerätezuordnungen ab. Leere Slots dürfen mehrfach vorkommen.
+// Validate rejects duplicate device assignments. Empty slots may repeat.
 func Validate(cfg Config) error {
 	seen := map[string]int{}
 	for i, slider := range cfg.Sliders {
@@ -79,14 +79,14 @@ func Validate(cfg Config) error {
 			continue
 		}
 		if prev, ok := seen[id]; ok {
-			return fmt.Errorf("Slider %d und Slider %d steuern dasselbe Gerät", prev+1, i+1)
+			return fmt.Errorf("slider %d and slider %d control the same device", prev+1, i+1)
 		}
 		seen[id] = i
 	}
 	return nil
 }
 
-// Load liest die Config oder legt eine neue an.
+// Load reads the config, or creates a new one.
 func Load() (*Store, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -117,8 +117,8 @@ func Load() (*Store, error) {
 	return store, nil
 }
 
-// Snapshot liefert eine Kopie und die Änderungsnummer.
-// Die Nummer steigt nur, wenn der Nutzer speichert, nicht beim Merken des COM-Ports.
+// Snapshot returns a copy and the change number.
+// The number increases only when the user saves, not when the COM port is remembered.
 func (s *Store) Snapshot() (Config, uint64) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -130,7 +130,7 @@ func (s *Store) Get() Config {
 	return cfg
 }
 
-// Save schreibt eine neue Nutzerkonfiguration und erhöht die Änderungsnummer.
+// Save writes a new user configuration and increases the change number.
 func (s *Store) Save(cfg Config) error {
 	if err := Validate(cfg); err != nil {
 		return err
@@ -144,7 +144,7 @@ func (s *Store) Save(cfg Config) error {
 	return s.writeLocked()
 }
 
-// RememberPort merkt sich den zuletzt funktionierenden COM-Port, ohne die Regler neu anzuwenden.
+// RememberPort stores the last working COM port without reapplying the sliders.
 func (s *Store) RememberPort(port string) error {
 	if port == "" {
 		return nil

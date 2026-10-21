@@ -19,16 +19,16 @@ var (
 	enabled = true
 )
 
-// SetEnabled schaltet das Schreiben in die Logdatei ein oder aus.
+// SetEnabled turns writing to the log file on or off.
 func SetEnabled(on bool) {
 	mu.Lock()
 	enabled = on
 	mu.Unlock()
 }
 
-// Init schreibt nach %AppData%\SoundMixer\soundmixer.log.
-// Die Datei bleibt bei höchstens 5 MB. Darüber fallen die ältesten Einträge weg.
-// Die Release-exe hat kein Konsolenfenster, die Datei bleibt die Fehlerquelle.
+// Init writes to %AppData%\SoundMixer\soundmixer.log.
+// The file stays within 5 MB. Past that, the oldest entries are dropped.
+// The release exe has no console, so this file is where errors show up.
 func Init(dir string) {
 	if dir == "" {
 		return
@@ -36,7 +36,7 @@ func Init(dir string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
-	// Ohne O_APPEND: unter Windows lässt sich eine Append-Datei nicht kürzen.
+	// No O_APPEND: on Windows an append-only file cannot be truncated.
 	f, err := os.OpenFile(filepath.Join(dir, "soundmixer.log"), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return
@@ -75,7 +75,7 @@ func Printf(format string, args ...any) {
 	enforceSizeLocked()
 }
 
-// enforceSizeLocked kürzt die Datei auf die neuere Hälfte, sobald sie 5 MB überschreitet.
+// enforceSizeLocked keeps the newer half once the file exceeds 5 MB.
 func enforceSizeLocked() {
 	if logFile == nil {
 		return
@@ -102,7 +102,7 @@ func enforceSizeLocked() {
 	if _, err := logFile.Seek(0, io.SeekStart); err != nil {
 		return
 	}
-	_, _ = logFile.Write([]byte("logdatei gekürzt, ältere einträge entfernt\n"))
+	_, _ = logFile.Write([]byte("log truncated, older entries removed\n"))
 	_, _ = logFile.Write(buf)
 	_, _ = logFile.Seek(0, io.SeekEnd)
 }

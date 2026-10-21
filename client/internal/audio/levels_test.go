@@ -21,20 +21,20 @@ func TestFormatLevels(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 	if percent(0) != 0 || percent(1) != 100 || percent(0.995) != 100 {
-		t.Fatalf("ränder: %d %d %d", percent(0), percent(1), percent(0.995))
+		t.Fatalf("edges: %d %d %d", percent(0), percent(1), percent(0.995))
 	}
 }
 
 func TestApplyDue(t *testing.T) {
 	now := time.Unix(1_000, 0)
 	if !applyDue(now, time.Time{}) {
-		t.Fatal("erster Schreibvorgang soll sofort gelten")
+		t.Fatal("the first write should apply immediately")
 	}
 	next := now.Add(applyInterval)
 	if applyDue(now.Add(400*time.Millisecond), next) {
-		t.Fatal("innerhalb der halben Sekunde soll kein zweiter Schreibvorgang gelten")
+		t.Fatal("a second write inside the half second should not apply")
 	}
 	if !applyDue(next, next) {
-		t.Fatal("nach einer halben Sekunde soll der gemerkte Pegel gelten")
+		t.Fatal("the stored level should apply after half a second")
 	}
 }

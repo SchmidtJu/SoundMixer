@@ -14,8 +14,8 @@ import (
 
 const espressifVID = "303A"
 
-// FindPort sucht den ESP32 über die USB-VID 303A.
-// Ein fest eingestellter COM-Port hat Vorrang. Sonst der zuletzt funktionierende Port.
+// FindPort looks for the ESP32 by USB vendor ID 303A.
+// A fixed COM port wins. Otherwise the last port that worked is used.
 func FindPort(cfg config.Config) (string, error) {
 	ports, err := enumerator.GetDetailedPortsList()
 	if err != nil {
@@ -64,16 +64,16 @@ func matchName(ports []*enumerator.PortDetails, name string) string {
 	return ""
 }
 
-// RetryPause ist die Pause zwischen Verbindungsversuchen.
+// RetryPause is the delay between connection attempts.
 const RetryPause = time.Second
 
 type notFoundError struct{}
 
-func (notFoundError) Error() string { return "kein ESP32 gefunden" }
+func (notFoundError) Error() string { return "no ESP32 found" }
 
 var errNotFound = notFoundError{}
 
-// Sleep wartet, bricht aber ab, wenn ctx fertig ist.
+// Sleep waits, and returns early when ctx is done.
 func Sleep(ctx context.Context, d time.Duration) {
 	timer := time.NewTimer(d)
 	defer timer.Stop()

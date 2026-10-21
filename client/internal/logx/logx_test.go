@@ -27,10 +27,10 @@ func TestSetEnabled(t *testing.T) {
 	}
 	text := string(data)
 	if strings.Contains(text, "hidden") {
-		t.Fatalf("ausgeschaltetes logging hat geschrieben: %s", text)
+		t.Fatalf("disabled logging wrote: %s", text)
 	}
 	if !strings.Contains(text, "visible yes") {
-		t.Fatalf("eingeschaltetes logging fehlt: %s", text)
+		t.Fatalf("enabled logging missing: %s", text)
 	}
 }
 
@@ -41,11 +41,11 @@ func TestFileCappedAtFiveMB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.WriteString("ANFANG-MARKER\n"); err != nil {
+	if _, err := f.WriteString("START-MARKER\n"); err != nil {
 		t.Fatal(err)
 	}
-	block := bytes.Repeat([]byte("zeile\n"), 8192)
-	written := int64(len("ANFANG-MARKER\n"))
+	block := bytes.Repeat([]byte("line\n"), 8192)
+	written := int64(len("START-MARKER\n"))
 	for written < maxLogBytes+1024 {
 		n, err := f.Write(block)
 		written += int64(n)
@@ -53,7 +53,7 @@ func TestFileCappedAtFiveMB(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := f.WriteString("ENDE-MARKER\n"); err != nil {
+	if _, err := f.WriteString("END-MARKER\n"); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.Close(); err != nil {
@@ -63,27 +63,27 @@ func TestFileCappedAtFiveMB(t *testing.T) {
 	SetEnabled(true)
 	t.Cleanup(closeFile)
 	Init(dir)
-	Printf("frische zeile")
+	Printf("fresh line")
 
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if info.Size() > maxLogBytes {
-		t.Fatalf("größe %d, maximum %d", info.Size(), maxLogBytes)
+		t.Fatalf("size %d, maximum %d", info.Size(), maxLogBytes)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(data, []byte("ANFANG-MARKER")) {
-		t.Fatal("anfang noch vorhanden")
+	if bytes.Contains(data, []byte("START-MARKER")) {
+		t.Fatal("start marker still present")
 	}
-	if !bytes.Contains(data, []byte("ENDE-MARKER")) || !bytes.Contains(data, []byte("frische zeile")) {
-		t.Fatalf("neue einträge fehlen: %s", tail(data))
+	if !bytes.Contains(data, []byte("END-MARKER")) || !bytes.Contains(data, []byte("fresh line")) {
+		t.Fatalf("new entries missing: %s", tail(data))
 	}
-	if !bytes.Contains(data, []byte("logdatei gekürzt")) {
-		t.Fatal("hinweis auf kürzung fehlt")
+	if !bytes.Contains(data, []byte("log truncated")) {
+		t.Fatal("truncation notice missing")
 	}
 }
 

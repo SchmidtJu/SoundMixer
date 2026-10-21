@@ -6,7 +6,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Acquire hält eine Mutex für die Sitzung. false heißt, eine Instanz läuft schon.
+// Acquire holds a session mutex. false means an instance is already running.
 func Acquire() bool {
 	name, err := windows.UTF16PtrFromString(`Local\SoundMixer`)
 	if err != nil {
@@ -19,12 +19,12 @@ func Acquire() bool {
 		}
 		return false
 	}
-	// Handle absichtlich offen lassen, sonst verschwindet die Mutex.
+	// Leave the handle open. Closing it drops the mutex.
 	return true
 }
 
 func AlertAlreadyRunning() {
 	title, _ := windows.UTF16PtrFromString("SoundMixer")
-	text, _ := windows.UTF16PtrFromString("SoundMixer läuft bereits.")
+	text, _ := windows.UTF16PtrFromString("SoundMixer is already running.")
 	_, _ = windows.MessageBox(0, text, title, windows.MB_OK|windows.MB_ICONINFORMATION)
 }

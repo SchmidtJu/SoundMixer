@@ -18,7 +18,7 @@ import (
 	"soundmixer/internal/serialconn"
 )
 
-// App ist das Tray-Programm. Das Hauptfenster bleibt unsichtbar.
+// App is the tray program. The main window stays hidden.
 type App struct {
 	store *config.Store
 	audio *audio.Controller
@@ -35,7 +35,7 @@ func New(store *config.Store, ctrl *audio.Controller) *App {
 	return &App{
 		store: store,
 		audio: ctrl,
-		link:  serialconn.LinkStatus{Detail: "Getrennt – suche ESP32…"},
+		link:  serialconn.LinkStatus{Detail: "Disconnected – looking for ESP32…"},
 	}
 }
 
@@ -93,8 +93,8 @@ func (a *App) Run() error {
 		return err
 	}
 
-	// Das Hauptfenster ist nur die Nachrichtenschleife für das Tray-Icon.
-	// Schließen (auch das vom Dialog ausgelöste) darf die App nicht beenden.
+	// The main window only runs the message loop for the tray icon.
+	// Closing it, including a close started by the dialog, must not quit the app.
 	hideTrayWindow(mw)
 	mw.Closing().Attach(func(canceled *bool, _ walk.CloseReason) {
 		if a.quitting {
@@ -105,7 +105,7 @@ func (a *App) Run() error {
 	})
 
 	settingsAction := walk.NewAction()
-	if err := settingsAction.SetText("Einstellungen…"); err != nil {
+	if err := settingsAction.SetText("Settings…"); err != nil {
 		return err
 	}
 	settingsAction.Triggered().Attach(func() { a.openSettings() })
@@ -114,7 +114,7 @@ func (a *App) Run() error {
 	}
 
 	exitAction := walk.NewAction()
-	if err := exitAction.SetText("Beenden"); err != nil {
+	if err := exitAction.SetText("Quit"); err != nil {
 		return err
 	}
 	exitAction.Triggered().Attach(func() {
@@ -157,10 +157,10 @@ func showSettings(owner *walk.MainWindow, store *config.Store, ctrl *audio.Contr
 	devices, err := ctrl.Devices()
 	statusText := link.Label()
 	if err != nil {
-		logx.Printf("ausgabegeräte: %v", err)
-		statusText += " – Geräteliste nicht verfügbar"
+		logx.Printf("playback devices: %v", err)
+		statusText += " – device list unavailable"
 	} else {
-		statusText += fmt.Sprintf(" – %d Ausgabegeräte", len(devices))
+		statusText += fmt.Sprintf(" – %d playback devices", len(devices))
 	}
 	labels, ids := deviceOptions(devices, cfg)
 
@@ -187,37 +187,37 @@ func showSettings(owner *walk.MainWindow, store *config.Store, ctrl *audio.Contr
 	}
 	children = append(children,
 		Composite{Layout: Grid{Columns: 2}, Children: grid},
-		CheckBox{AssignTo: &invert, Text: "Slider invertieren", Checked: cfg.InvertSliders},
-		CheckBox{AssignTo: &auto, Text: "Mit Windows starten", Checked: cfg.Autostart},
-		CheckBox{AssignTo: &logging, Text: "Logging aktivieren", Checked: cfg.Logging},
+		CheckBox{AssignTo: &invert, Text: "Invert sliders", Checked: cfg.InvertSliders},
+		CheckBox{AssignTo: &auto, Text: "Start with Windows", Checked: cfg.Autostart},
+		CheckBox{AssignTo: &logging, Text: "Enable logging", Checked: cfg.Logging},
 		Composite{
 			Layout: HBox{},
 			Children: []Widget{
 				HSpacer{},
 				PushButton{
-					Text: "Speichern",
+					Text: "Save",
 					OnClicked: func() {
 						if saveSettings(dlg, store, cfg, boxes, ids, labels, invert, auto, logging) {
 							dlg.Accept()
 						}
 					},
 				},
-				PushButton{Text: "Abbrechen", OnClicked: func() { dlg.Cancel() }},
+				PushButton{Text: "Cancel", OnClicked: func() { dlg.Cancel() }},
 			},
 		},
 	)
 
-	// Kein Owner: walk zeigt beim Schließen sonst das versteckte Hauptfenster
-	// (SWP_SHOWWINDOW) und beendet damit die Tray-App.
+	// No owner: on close, walk would otherwise show the hidden main window
+	// (SWP_SHOWWINDOW) and quit the tray app.
 	if err := (Dialog{
 		AssignTo: &dlg,
-		Title:    "SoundMixer Einstellungen",
+		Title:    "SoundMixer Settings",
 		MinSize:  Size{Width: 480, Height: 310},
 		Layout:   VBox{},
 		Children: children,
 	}).Create(nil); err != nil {
-		logx.Printf("einstellungen: %v", err)
-		walk.MsgBox(owner, "SoundMixer", "Einstellungen konnten nicht geöffnet werden.", walk.MsgBoxIconError)
+		logx.Printf("settings: %v", err)
+		walk.MsgBox(owner, "SoundMixer", "Could not open settings.", walk.MsgBoxIconError)
 		return
 	}
 	for i := range boxes {
@@ -235,7 +235,7 @@ func showSettings(owner *walk.MainWindow, store *config.Store, ctrl *audio.Contr
 	hideTrayWindow(owner)
 }
 
-// hideTrayWindow hält das Hauptfenster aus der Taskleiste und unsichtbar.
+// hideTrayWindow keeps the main window off the taskbar and invisible.
 func hideTrayWindow(mw *walk.MainWindow) {
 	hwnd := mw.Handle()
 	if hwnd == 0 {
@@ -266,7 +266,7 @@ func saveSettings(
 		}
 		name := ""
 		if idx < len(labels) {
-			name = strings.TrimSuffix(labels[idx], " (nicht verbunden)")
+			name = strings.TrimSuffix(labels[idx], " (disconnected)")
 		}
 		if ids[idx] == "" {
 			name = ""
@@ -283,13 +283,13 @@ func saveSettings(
 	}
 	if err := autostart.Set(next.Autostart); err != nil {
 		logx.Printf("autostart: %v", err)
-		walk.MsgBox(owner, "SoundMixer", "Autostart konnte nicht gesetzt werden: "+err.Error(), walk.MsgBoxIconError)
+		walk.MsgBox(owner, "SoundMixer", "Could not set startup: "+err.Error(), walk.MsgBoxIconError)
 		return false
 	}
 	if err := store.Save(next); err != nil {
-		logx.Printf("speichern: %v", err)
+		logx.Printf("save: %v", err)
 		_ = autostart.Set(previous.Autostart)
-		walk.MsgBox(owner, "SoundMixer", "Einstellungen konnten nicht gespeichert werden.", walk.MsgBoxIconError)
+		walk.MsgBox(owner, "SoundMixer", "Could not save settings.", walk.MsgBoxIconError)
 		return false
 	}
 	logx.SetEnabled(next.Logging)
@@ -297,7 +297,7 @@ func saveSettings(
 }
 
 func deviceOptions(devices []audio.Device, cfg config.Config) (labels, ids []string) {
-	labels = []string{"Nicht zugewiesen", "Windows-Standardgerät"}
+	labels = []string{"Unassigned", "Windows default device"}
 	ids = []string{"", config.DefaultDeviceID}
 	seen := map[string]bool{
 		"":                     true,
@@ -319,7 +319,7 @@ func deviceOptions(devices []audio.Device, cfg config.Config) (labels, ids []str
 		if name == "" {
 			name = slider.DeviceID
 		}
-		labels = append(labels, name+" (nicht verbunden)")
+		labels = append(labels, name+" (disconnected)")
 		ids = append(ids, slider.DeviceID)
 		seen[slider.DeviceID] = true
 	}

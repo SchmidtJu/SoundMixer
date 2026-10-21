@@ -16,7 +16,7 @@ import (
 	"soundmixer/internal/scale"
 )
 
-// LinkStatus beschreibt die USB-Verbindung für Tray und Einstellungen.
+// LinkStatus describes the USB link for the tray icon and the settings window.
 type LinkStatus struct {
 	Connected bool
 	Port      string
@@ -26,21 +26,21 @@ type LinkStatus struct {
 func (s LinkStatus) Label() string {
 	if s.Connected {
 		if s.Port != "" {
-			return "Verbunden (" + s.Port + ")"
+			return "Connected (" + s.Port + ")"
 		}
-		return "Verbunden"
+		return "Connected"
 	}
 	if s.Detail != "" {
 		return s.Detail
 	}
-	return "Getrennt – suche ESP32…"
+	return "Disconnected – looking for ESP32…"
 }
 
 func (s LinkStatus) Tooltip() string {
 	return "SoundMixer – " + s.Label()
 }
 
-// Run liest Slider-Zeilen und gibt geänderte Pegel an den Audio-Controller.
+// Run reads slider lines and forwards changed levels to the audio controller.
 func Run(ctx context.Context, store *config.Store, ctrl *audio.Controller, status func(LinkStatus)) {
 	var applied [config.SliderCount]float32
 	var have [config.SliderCount]bool
@@ -58,7 +58,7 @@ func Run(ctx context.Context, store *config.Store, ctrl *audio.Controller, statu
 		portName, err := FindPort(cfg)
 		if err != nil {
 			if status != nil {
-				status(LinkStatus{Detail: "Getrennt – suche ESP32…"})
+				status(LinkStatus{Detail: "Disconnected – looking for ESP32…"})
 			}
 			Sleep(ctx, RetryPause)
 			continue
@@ -68,7 +68,7 @@ func Run(ctx context.Context, store *config.Store, ctrl *audio.Controller, statu
 		if err != nil {
 			logx.Printf("COM %s: %v", portName, err)
 			if status != nil {
-				status(LinkStatus{Detail: "Getrennt – " + portName + " belegt oder nicht bereit"})
+				status(LinkStatus{Detail: "Disconnected – " + portName + " is busy or not ready"})
 			}
 			Sleep(ctx, RetryPause)
 			continue
@@ -79,16 +79,16 @@ func Run(ctx context.Context, store *config.Store, ctrl *audio.Controller, statu
 			status(LinkStatus{Connected: true, Port: portName})
 		}
 		if err := store.RememberPort(portName); err != nil {
-			logx.Printf("COM merken: %v", err)
+			logx.Printf("remember COM: %v", err)
 		}
-		logx.Printf("verbunden mit %s", portName)
+		logx.Printf("connected to %s", portName)
 
 		readPort(ctx, port, store, ctrl, &gen, &force, &applied, &have)
 		_ = port.Close()
 		if status != nil && ctx.Err() == nil {
-			status(LinkStatus{Detail: "Getrennt – suche ESP32…"})
+			status(LinkStatus{Detail: "Disconnected – looking for ESP32…"})
 		}
-		logx.Printf("getrennt von %s", portName)
+		logx.Printf("disconnected from %s", portName)
 		Sleep(ctx, 500*time.Millisecond)
 	}
 }
@@ -116,7 +116,7 @@ func readPort(
 
 		n, err := port.Read(buf)
 		if err != nil {
-			logx.Printf("lesen: %v", err)
+			logx.Printf("read: %v", err)
 			return
 		}
 		if n == 0 {

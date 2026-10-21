@@ -28,11 +28,11 @@ func TestListPlaybackDevices(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(devices) == 0 {
-		t.Fatal("keine wiedergabegeräte")
+		t.Fatal("no playback devices")
 	}
 	for _, device := range devices {
 		if device.ID == "" || device.Name == "" {
-			t.Fatalf("unvollständiges gerät: %+v", device)
+			t.Fatalf("incomplete device: %+v", device)
 		}
 		t.Logf("%s | %s", device.Name, device.ID)
 	}

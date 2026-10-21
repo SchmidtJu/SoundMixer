@@ -14,8 +14,8 @@ const (
 	runName = "SoundMixer"
 )
 
-// Set trägt die exe in HKCU\...\Run ein oder entfernt sie.
-// Kein Dienst: die Lautstärke gehört zur angemeldeten Sitzung.
+// Set adds the exe under HKCU\...\Run or removes it.
+// This is not a service: volume belongs to the signed-in session.
 func Set(enabled bool) error {
 	key, _, err := registry.CreateKey(registry.CURRENT_USER, runKey, registry.SET_VALUE)
 	if err != nil {

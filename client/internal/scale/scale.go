@@ -1,18 +1,18 @@
 package scale
 
-// Max ist der höchste Rohwert aus der Firmware.
+// Max is the highest raw value sent by the firmware.
 const Max = 1023
 
-// DeadZone schneidet das obere und untere Ende ab.
-// Der ESP32-S3-ADC erreicht bei 3,3-V-Potis nicht sauber 0 und 1023.
+// DeadZone drops the top and bottom of the range.
+// With 3.3 V pots the ESP32-S3 ADC does not reach a clean 0 and 1023.
 const DeadZone = 31
 
-// Epsilon ist die kleinste Lautstärkeänderung, die an Windows weitergegeben wird.
-// Das Rauschen filtert die Firmware. Hier bleibt nur ein kleiner Schutz vor Doppelmeldungen.
+// Epsilon is the smallest volume change forwarded to Windows.
+// The firmware already filters noise. This only skips duplicate reports.
 const Epsilon = 0.01
 
-// Level mappt einen Rohwert 0..1023 auf 0..1.
-// invert dreht die Richtung (unten laut, oben leise).
+// Level maps a raw value in 0..1023 onto 0..1.
+// invert swaps the direction, so the low end is loud and the high end is quiet.
 func Level(raw int, invert bool) float32 {
 	if raw < 0 {
 		raw = 0
