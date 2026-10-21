@@ -19,10 +19,6 @@ import (
 	"soundmixer/internal/logx"
 )
 
-// applyInterval limits Windows volume writes to one write every 100 ms.
-// Levels stored in between are applied on the next write.
-const applyInterval = 100 * time.Millisecond
-
 // Device is an active Windows playback device.
 type Device struct {
 	ID   string
@@ -49,9 +45,11 @@ type listResult struct {
 // Controller sets the master volume of playback endpoints.
 // Every COM call runs on the goroutine started by Run.
 type Controller struct {
-	mu      sync.Mutex
-	sliders [config.SliderCount]sliderState
-	dirty   bool
+	mu            sync.Mutex
+	sliders       [config.SliderCount]sliderState
+	dirty         bool
+	applyInterval time.Duration
+	lastApply     time.Time
 
 	wake    chan struct{}
 	listReq chan chan listResult
@@ -67,11 +65,31 @@ type Controller struct {
 
 func New() *Controller {
 	return &Controller{
-		wake:    make(chan struct{}, 1),
-		listReq: make(chan chan listResult),
-		stop:    make(chan struct{}),
-		vols:    map[string]*wca.IAudioEndpointVolume{},
-		logAt:   map[string]time.Time{},
+		wake:          make(chan struct{}, 1),
+		listReq:       make(chan chan listResult),
+		stop:          make(chan struct{}),
+		vols:          map[string]*wca.IAudioEndpointVolume{},
+		logAt:         map[string]time.Time{},
+		applyInterval: time.Duration(config.DefaultUpdateIntervalMs) * time.Millisecond,
+	}
+}
+
+// SetUpdateInterval changes the write limit without restarting the client.
+func (c *Controller) SetUpdateInterval(ms int) {
+	if ms < config.MinUpdateIntervalMs || ms > config.MaxUpdateIntervalMs {
+		ms = config.DefaultUpdateIntervalMs
+	}
+	c.mu.Lock()
+	c.applyInterval = time.Duration(ms) * time.Millisecond
+	if !c.lastApply.IsZero() {
+		c.nextApply = c.lastApply.Add(c.applyInterval)
+	}
+	// Allow a new, earlier timer when shortening an interval with pending data.
+	c.waiting = false
+	c.mu.Unlock()
+	select {
+	case c.wake <- struct{}{}:
+	default:
 	}
 }
 
@@ -216,7 +234,8 @@ func (c *Controller) flush(enum *wca.IMMDeviceEnumerator) {
 		snap := c.sliders
 		c.dirty = false
 		c.waiting = false
-		c.nextApply = now.Add(applyInterval)
+		c.lastApply = now
+		c.nextApply = now.Add(c.applyInterval)
 		c.mu.Unlock()
 		c.apply(enum, snap)
 	}

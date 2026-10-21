@@ -61,7 +61,7 @@ func TestReadPortWatchdog(t *testing.T) {
 			var have [config.SliderCount]bool
 			ready := false
 			readPort(ctx, port, store, audio.New(), &gen, &force, &applied, &have,
-				25*time.Millisecond, func() { ready = true })
+				25*time.Millisecond, func() { ready = true }, nil)
 			if ctx.Err() != nil {
 				t.Fatal("watchdog did not close the silent or invalid stream")
 			}
@@ -80,7 +80,7 @@ func TestValidHeartbeatsKeepConnectionAlive(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	reads, ready := 0, 0
+	reads, ready, reports := 0, 0, 0
 	port := readerFunc(func(p []byte) (int, error) {
 		time.Sleep(5 * time.Millisecond)
 		reads++
@@ -94,8 +94,16 @@ func TestValidHeartbeatsKeepConnectionAlive(t *testing.T) {
 	var applied [config.SliderCount]float32
 	var have [config.SliderCount]bool
 	readPort(ctx, port, store, audio.New(), &gen, &force, &applied, &have,
-		25*time.Millisecond, func() { ready++ })
+		25*time.Millisecond, func() { ready++ }, func(values [config.SliderCount]int) {
+			reports++
+			if values != [config.SliderCount]int{100, 200, 300, 400} {
+				t.Fatalf("unexpected display values: %v", values)
+			}
+		})
 	if reads != 10 || ready != 1 {
 		t.Fatalf("reads=%d, ready=%d", reads, ready)
+	}
+	if reports != 10 {
+		t.Fatalf("display should receive all valid reports, including unchanged heartbeats: %d", reports)
 	}
 }

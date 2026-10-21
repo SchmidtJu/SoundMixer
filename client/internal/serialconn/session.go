@@ -44,7 +44,7 @@ func (s LinkStatus) Tooltip() string {
 }
 
 // Run reads slider lines and forwards changed levels to the audio controller.
-func Run(ctx context.Context, store *config.Store, ctrl *audio.Controller, status func(LinkStatus)) {
+func Run(ctx context.Context, store *config.Store, ctrl *audio.Controller, status func(LinkStatus), onValues func([config.SliderCount]int)) {
 	var applied [config.SliderCount]float32
 	var have [config.SliderCount]bool
 	var gen uint64
@@ -92,7 +92,7 @@ func Run(ctx context.Context, store *config.Store, ctrl *audio.Controller, statu
 				logx.Printf("remember COM: %v", err)
 			}
 			logx.Printf("connected to %s", portName)
-		})
+		}, onValues)
 		_ = port.Close()
 		if status != nil && ctx.Err() == nil {
 			status(LinkStatus{Detail: "Disconnected – looking for ESP32…"})
@@ -113,6 +113,7 @@ func readPort(
 	have *[config.SliderCount]bool,
 	timeout time.Duration,
 	onReady func(),
+	onValues func([config.SliderCount]int),
 ) {
 	buf := make([]byte, 256)
 	var line []byte
@@ -163,6 +164,9 @@ func readPort(
 				}
 			}
 			push(ctrl, cfg, values, force, applied, have)
+			if onValues != nil {
+				onValues(values)
+			}
 		}
 		if len(line) > 1024 {
 			line = append([]byte(nil), line[len(line)-1024:]...)

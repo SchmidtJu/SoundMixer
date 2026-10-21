@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"flag"
 
 	"soundmixer/internal/audio"
 	"soundmixer/internal/autostart"
@@ -15,6 +16,8 @@ import (
 )
 
 func main() {
+	showSettings := flag.Bool("settings", false, "Open the settings window on startup")
+	flag.Parse()
 	if !instance.Acquire() {
 		instance.AlertAlreadyRunning()
 		return
@@ -37,15 +40,16 @@ func main() {
 	}
 
 	ctrl := audio.New()
+	ctrl.SetUpdateInterval(store.Get().UpdateIntervalMs)
 	go ctrl.Run()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	app := ui.New(store, ctrl)
-	go serialconn.Run(ctx, store, ctrl, app.SetStatus)
+	go serialconn.Run(ctx, store, ctrl, app.SetStatus, app.SetSliderValues)
 
-	if err := app.Run(); err != nil {
+	if err := app.Run(*showSettings); err != nil {
 		logx.Printf("ui: %v", err)
 	}
 	cancel()

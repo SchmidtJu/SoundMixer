@@ -81,6 +81,7 @@ func TestLoadRoundTrip(t *testing.T) {
 
 	cfg.InvertSliders = true
 	cfg.Logging = false
+	cfg.UpdateIntervalMs = 250
 	cfg.Sliders[0] = Slider{DeviceID: "dev-a", DeviceName: "Speakers"}
 	if err := store.Save(cfg); err != nil {
 		t.Fatal(err)
@@ -100,7 +101,7 @@ func TestLoadRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := again.Get()
-	if !got.InvertSliders || got.Logging || got.Sliders[0].DeviceID != "dev-a" || got.LastPort != "COM7" {
+	if !got.InvertSliders || got.Logging || got.UpdateIntervalMs != 250 || got.Sliders[0].DeviceID != "dev-a" || got.LastPort != "COM7" {
 		t.Fatalf("loaded: %+v", got)
 	}
 	if _, err := os.Stat(filepath.Join(dir, appDirName, fileName)); err != nil {
@@ -125,5 +126,29 @@ func TestMissingLoggingStaysOn(t *testing.T) {
 	}
 	if !store.Get().Logging {
 		t.Fatal("missing logging must stay on")
+	}
+	if store.Get().UpdateIntervalMs != DefaultUpdateIntervalMs {
+		t.Fatal("old configs must use the default update interval")
+	}
+}
+
+func TestUpdateIntervalValidation(t *testing.T) {
+	for _, ms := range []int{-1, 19, 2001} {
+		cfg := defaultConfig()
+		cfg.UpdateIntervalMs = ms
+		if err := Validate(cfg); err == nil {
+			t.Fatalf("accepted invalid interval %d", ms)
+		}
+		normalize(&cfg)
+		if cfg.UpdateIntervalMs != DefaultUpdateIntervalMs {
+			t.Fatalf("invalid stored interval %d did not fall back to default", ms)
+		}
+	}
+	for _, ms := range []int{0, 20, 100, 500, 2000} {
+		cfg := defaultConfig()
+		cfg.UpdateIntervalMs = ms
+		if err := Validate(cfg); err != nil {
+			t.Fatalf("rejected interval %d: %v", ms, err)
+		}
 	}
 }

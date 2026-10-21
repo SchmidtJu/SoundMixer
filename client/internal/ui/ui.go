@@ -4,17 +4,20 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
 	"github.com/lxn/win"
+	"golang.org/x/sys/windows"
 
 	"soundmixer/internal/audio"
 	"soundmixer/internal/autostart"
 	"soundmixer/internal/config"
 	"soundmixer/internal/logx"
+	"soundmixer/internal/scale"
 	"soundmixer/internal/serialconn"
 )
 
@@ -29,6 +32,11 @@ type App struct {
 	link         serialconn.LinkStatus
 	settingsOpen bool
 	quitting     bool
+	sliderValues [config.SliderCount]int
+	haveValues   bool
+	valuesQueued bool
+	// Accessed only on the UI thread; cleared when the dialog closes.
+	refreshSettings func()
 }
 
 func New(store *config.Store, ctrl *audio.Controller) *App {
@@ -51,7 +59,40 @@ func (a *App) SetStatus(status serialconn.LinkStatus) {
 	}
 	mw.Synchronize(func() {
 		_ = ni.SetToolTip(status.Tooltip())
+		if a.refreshSettings != nil {
+			a.refreshSettings()
+		}
 	})
+}
+
+// SetSliderValues receives firmware positions independently of volume writes.
+func (a *App) SetSliderValues(values [config.SliderCount]int) {
+	a.mu.Lock()
+	unchanged := a.haveValues && a.sliderValues == values
+	a.sliderValues = values
+	a.haveValues = true
+	mw := a.mw
+	if unchanged || mw == nil || a.valuesQueued {
+		a.mu.Unlock()
+		return
+	}
+	a.valuesQueued = true
+	a.mu.Unlock()
+	mw.Synchronize(func() {
+		a.mu.Lock()
+		a.valuesQueued = false
+		a.mu.Unlock()
+		if a.refreshSettings != nil {
+			a.refreshSettings()
+		}
+	})
+}
+
+func sliderPercentText(raw int, invert, known bool) string {
+	if !known {
+		return "—"
+	}
+	return fmt.Sprintf("%d %%", int(math.Round(float64(scale.Level(raw, invert))*100)))
 }
 
 func (a *App) currentLink() serialconn.LinkStatus {
@@ -60,7 +101,7 @@ func (a *App) currentLink() serialconn.LinkStatus {
 	return a.link
 }
 
-func (a *App) Run() error {
+func (a *App) Run(showSettings bool) error {
 	mw, err := walk.NewMainWindow()
 	if err != nil {
 		return err
@@ -131,6 +172,9 @@ func (a *App) Run() error {
 		}
 	})
 
+	if showSettings {
+		mw.Starting().Attach(a.openSettings)
+	}
 	mw.Run()
 	return nil
 }
@@ -149,10 +193,10 @@ func (a *App) openSettings() {
 		a.settingsOpen = false
 		a.mu.Unlock()
 	}()
-	showSettings(owner, a.store, a.audio, a.currentLink())
+	a.showSettings(owner, a.store, a.audio, a.currentLink())
 }
 
-func showSettings(owner *walk.MainWindow, store *config.Store, ctrl *audio.Controller, link serialconn.LinkStatus) {
+func (a *App) showSettings(owner *walk.MainWindow, store *config.Store, ctrl *audio.Controller, link serialconn.LinkStatus) {
 	cfg := store.Get()
 	devices, err := ctrl.Devices()
 	statusText := link.Label()
@@ -168,41 +212,76 @@ func showSettings(owner *walk.MainWindow, store *config.Store, ctrl *audio.Contr
 	var invert *walk.CheckBox
 	var auto *walk.CheckBox
 	var logging *walk.CheckBox
+	var updateInterval *walk.NumberEdit
+	var statusLabel *walk.Label
+	var percentLabels [config.SliderCount]*walk.Label
+	var saveButton, cancelButton *walk.PushButton
 	boxes := make([]*walk.ComboBox, config.SliderCount)
 
 	children := []Widget{
-		Label{Text: statusText},
+		Composite{Layout: VBox{MarginsZero: true, Spacing: 6}, Children: []Widget{
+			Label{Text: "SoundMixer", Font: Font{PointSize: 26, Bold: true}, TextColor: textPrimary},
+			Label{Text: "Your sound. At your fingertips.", TextColor: textMuted},
+		}},
+		Composite{Background: SolidColorBrush{Color: surfaceColor}, Layout: HBox{Margins: Margins{16, 12, 16, 12}}, Children: []Widget{
+			Label{AssignTo: &statusLabel, Text: statusText, TextColor: textMuted},
+		}},
+		Label{Text: "OUTPUT CHANNELS", Font: Font{PointSize: 9, Bold: true}, TextColor: textMuted},
 	}
-	grid := []Widget{}
 	for i := 0; i < config.SliderCount; i++ {
-		grid = append(grid,
-			Label{Text: fmt.Sprintf("Slider %d", i+1)},
-			ComboBox{
-				AssignTo:     &boxes[i],
-				Model:        labels,
-				CurrentIndex: indexOf(ids, sliderID(cfg, i)),
-				MinSize:      Size{Width: 280},
+		children = append(children, Composite{
+			Background: SolidColorBrush{Color: surfaceColor},
+			Layout:     HBox{Margins: Margins{16, 12, 16, 12}, Spacing: 16},
+			Children: []Widget{
+				Label{Text: fmt.Sprintf("%02d", i+1), Font: Font{PointSize: 22, Bold: true}, TextColor: accentColor, MinSize: Size{Width: 44}},
+				Composite{StretchFactor: 1, Layout: VBox{MarginsZero: true, Spacing: 5}, Children: []Widget{
+					ComboBox{AssignTo: &boxes[i], Model: labels, CurrentIndex: indexOf(ids, sliderID(cfg, i)), MinSize: Size{Width: 300},
+						Accessibility: Accessibility{Name: fmt.Sprintf("Slider %d playback device", i+1)}},
+				}},
+				Composite{Layout: VBox{MarginsZero: true, Spacing: 3}, Children: []Widget{
+					Label{AssignTo: &percentLabels[i], Text: "—", Font: Font{PointSize: 20, Bold: true}, TextColor: textPrimary,
+						MinSize: Size{Width: 90}, TextAlignment: AlignFar,
+						ToolTipText: "Current slider position. Keyboard volume changes can make the Windows volume differ."},
+				}},
 			},
-		)
+		})
 	}
 	children = append(children,
-		Composite{Layout: Grid{Columns: 2}, Children: grid},
-		CheckBox{AssignTo: &invert, Text: "Invert sliders", Checked: cfg.InvertSliders},
-		CheckBox{AssignTo: &auto, Text: "Start with Windows", Checked: cfg.Autostart},
-		CheckBox{AssignTo: &logging, Text: "Enable logging", Checked: cfg.Logging},
+		Label{Text: "PREFERENCES", Font: Font{PointSize: 9, Bold: true}, TextColor: textMuted},
+		Composite{Background: SolidColorBrush{Color: surfaceColor}, Layout: VBox{Margins: Margins{16, 14, 16, 14}, Spacing: 14}, Children: []Widget{
+			Composite{Layout: HBox{MarginsZero: true, Spacing: 12}, Children: []Widget{
+				Composite{StretchFactor: 1, Layout: VBox{MarginsZero: true, Spacing: 4}, Children: []Widget{
+					Label{Text: "Response time", TextColor: textPrimary},
+					Label{Text: "Lower values make the sliders respond faster.", TextColor: textMuted, Font: Font{PointSize: 9}},
+				}},
+				intervalEditor(cfg.UpdateIntervalMs, &updateInterval),
+				Label{Text: "ms", TextColor: textMuted},
+			}},
+			Composite{Layout: HBox{MarginsZero: true, Spacing: 18}, Children: []Widget{
+				CheckBox{AssignTo: &invert, Text: "Invert sliders", Checked: cfg.InvertSliders},
+				CheckBox{AssignTo: &auto, Text: "Start with Windows", Checked: cfg.Autostart},
+				CheckBox{AssignTo: &logging, Text: "Enable logging", Checked: cfg.Logging},
+			}},
+		}},
+		VSpacer{},
 		Composite{
-			Layout: HBox{},
+			Layout: HBox{MarginsZero: true, Spacing: 10},
 			Children: []Widget{
+				PushButton{Text: "Logs && config", MinSize: Size{Width: 120, Height: 34},
+					ToolTipText: "Open the folder containing soundmixer.log and config.json.",
+					OnClicked:   func() { openDataFolder(dlg) }},
 				HSpacer{},
+				PushButton{AssignTo: &cancelButton, Text: "Cancel", MinSize: Size{Width: 90, Height: 34}, OnClicked: func() { dlg.Cancel() }},
 				PushButton{
-					Text: "Save",
+					AssignTo: &saveButton,
+					Text:     "Save changes",
+					MinSize:  Size{Width: 120, Height: 34},
 					OnClicked: func() {
-						if saveSettings(dlg, store, cfg, boxes, ids, labels, invert, auto, logging) {
+						if saveSettings(dlg, store, cfg, boxes, ids, labels, invert, auto, logging, updateInterval, ctrl) {
 							dlg.Accept()
 						}
 					},
 				},
-				PushButton{Text: "Cancel", OnClicked: func() { dlg.Cancel() }},
 			},
 		},
 	)
@@ -210,16 +289,41 @@ func showSettings(owner *walk.MainWindow, store *config.Store, ctrl *audio.Contr
 	// No owner: on close, walk would otherwise show the hidden main window
 	// (SWP_SHOWWINDOW) and quit the tray app.
 	if err := (Dialog{
-		AssignTo: &dlg,
-		Title:    "SoundMixer Settings",
-		MinSize:  Size{Width: 480, Height: 310},
-		Layout:   VBox{},
-		Children: children,
+		AssignTo:      &dlg,
+		Title:         "SoundMixer",
+		Font:          Font{Family: "Segoe UI", PointSize: 10},
+		Background:    SolidColorBrush{Color: backgroundColor},
+		MinSize:       Size{Width: 640, Height: 630},
+		Layout:        VBox{Margins: Margins{24, 20, 24, 20}, Spacing: 12},
+		DefaultButton: &saveButton,
+		CancelButton:  &cancelButton,
+		Children:      children,
 	}).Create(nil); err != nil {
 		logx.Printf("settings: %v", err)
 		walk.MsgBox(owner, "SoundMixer", "Could not open settings.", walk.MsgBoxIconError)
 		return
 	}
+	defer dlg.Dispose()
+	applyDarkTheme(dlg)
+	updateInterval.SetTextColor(textPrimary)
+	deviceSummary := strings.TrimPrefix(statusText, link.Label())
+	a.refreshSettings = func() {
+		a.mu.Lock()
+		values, known, currentLink := a.sliderValues, a.haveValues, a.link
+		a.mu.Unlock()
+		_ = statusLabel.SetText(currentLink.Label() + deviceSummary)
+		if currentLink.Connected {
+			statusLabel.SetTextColor(walk.RGB(102, 218, 174))
+		} else {
+			statusLabel.SetTextColor(walk.RGB(240, 190, 110))
+		}
+		for i, label := range percentLabels {
+			_ = label.SetText(sliderPercentText(values[i], invert.Checked(), known && currentLink.Connected))
+		}
+	}
+	defer func() { a.refreshSettings = nil }()
+	invert.CheckedChanged().Attach(a.refreshSettings)
+	a.refreshSettings()
 	for i := range boxes {
 		if boxes[i] == nil {
 			continue
@@ -233,6 +337,37 @@ func showSettings(owner *walk.MainWindow, store *config.Store, ctrl *audio.Contr
 	dlg.Run()
 	owner.SetEnabled(true)
 	hideTrayWindow(owner)
+}
+
+func openDataFolder(owner walk.Form) {
+	dir, err := config.Dir()
+	if err == nil {
+		var path *uint16
+		path, err = windows.UTF16PtrFromString(dir)
+		if err == nil {
+			err = windows.ShellExecute(windows.Handle(owner.Handle()), nil, path, nil, nil, windows.SW_SHOWNORMAL)
+		}
+	}
+	if err != nil {
+		logx.Printf("open data folder: %v", err)
+		walk.MsgBox(owner, "SoundMixer", "Could not open the logs and configuration folder: "+err.Error(), walk.MsgBoxIconError)
+	}
+}
+
+func intervalEditor(ms int, target **walk.NumberEdit) NumberEdit {
+	return NumberEdit{
+		AssignTo:   target,
+		Background: SolidColorBrush{Color: surfaceColor},
+		MinSize:    Size{Width: 84},
+		MaxSize:    Size{Width: 100},
+		MinValue:   config.MinUpdateIntervalMs,
+		MaxValue:   config.MaxUpdateIntervalMs,
+		// Walk's Value property accepts float64; an int silently becomes zero.
+		Value:              float64(ms),
+		Increment:          10,
+		SpinButtonsVisible: true,
+		ToolTipText:        "20–2000 ms. Lower values make the sliders respond faster. Default: 100 ms.",
+	}
 }
 
 // hideTrayWindow keeps the main window off the taskbar and invisible.
@@ -253,6 +388,8 @@ func saveSettings(
 	boxes []*walk.ComboBox,
 	ids, labels []string,
 	invert, auto, logging *walk.CheckBox,
+	updateInterval *walk.NumberEdit,
+	ctrl *audio.Controller,
 ) bool {
 	next := previous
 	next.Sliders = make([]config.Slider, config.SliderCount)
@@ -276,6 +413,9 @@ func saveSettings(
 	next.InvertSliders = invert != nil && invert.Checked()
 	next.Autostart = auto != nil && auto.Checked()
 	next.Logging = logging != nil && logging.Checked()
+	if updateInterval != nil {
+		next.UpdateIntervalMs = int(updateInterval.Value())
+	}
 
 	if err := config.Validate(next); err != nil {
 		walk.MsgBox(owner, "SoundMixer", err.Error(), walk.MsgBoxIconWarning)
@@ -293,6 +433,7 @@ func saveSettings(
 		return false
 	}
 	logx.SetEnabled(next.Logging)
+	ctrl.SetUpdateInterval(next.UpdateIntervalMs)
 	return true
 }
 

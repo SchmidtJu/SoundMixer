@@ -10,10 +10,13 @@ import (
 )
 
 const (
-	SliderCount     = 4
-	DefaultDeviceID = "system.default"
-	appDirName      = "SoundMixer"
-	fileName        = "config.json"
+	SliderCount             = 4
+	DefaultDeviceID         = "system.default"
+	DefaultUpdateIntervalMs = 100
+	MinUpdateIntervalMs     = 20
+	MaxUpdateIntervalMs     = 2000
+	appDirName              = "SoundMixer"
+	fileName                = "config.json"
 )
 
 // Slider maps one control to a Windows playback device.
@@ -26,12 +29,13 @@ type Slider struct {
 
 // Config is stored in %AppData%\SoundMixer\config.json.
 type Config struct {
-	ComPort       string   `json:"com_port"`
-	LastPort      string   `json:"last_port"`
-	InvertSliders bool     `json:"invert_sliders"`
-	Autostart     bool     `json:"autostart"`
-	Logging       bool     `json:"logging"`
-	Sliders       []Slider `json:"sliders"`
+	ComPort          string   `json:"com_port"`
+	LastPort         string   `json:"last_port"`
+	InvertSliders    bool     `json:"invert_sliders"`
+	Autostart        bool     `json:"autostart"`
+	Logging          bool     `json:"logging"`
+	UpdateIntervalMs int      `json:"update_interval_ms"`
+	Sliders          []Slider `json:"sliders"`
 }
 
 // Store keeps the configuration in memory and on disk.
@@ -52,13 +56,17 @@ func Dir() (string, error) {
 
 func defaultConfig() Config {
 	return Config{
-		ComPort: "auto",
-		Logging: true,
-		Sliders: make([]Slider, SliderCount),
+		ComPort:          "auto",
+		Logging:          true,
+		UpdateIntervalMs: DefaultUpdateIntervalMs,
+		Sliders:          make([]Slider, SliderCount),
 	}
 }
 
 func normalize(cfg *Config) {
+	if cfg.UpdateIntervalMs < MinUpdateIntervalMs || cfg.UpdateIntervalMs > MaxUpdateIntervalMs {
+		cfg.UpdateIntervalMs = DefaultUpdateIntervalMs
+	}
 	if cfg.ComPort == "" {
 		cfg.ComPort = "auto"
 	}
@@ -72,6 +80,10 @@ func normalize(cfg *Config) {
 
 // Validate rejects duplicate device assignments. Empty slots may repeat.
 func Validate(cfg Config) error {
+	// Zero is accepted for configurations created before this setting existed.
+	if cfg.UpdateIntervalMs != 0 && (cfg.UpdateIntervalMs < MinUpdateIntervalMs || cfg.UpdateIntervalMs > MaxUpdateIntervalMs) {
+		return fmt.Errorf("volume update interval must be between %d and %d ms", MinUpdateIntervalMs, MaxUpdateIntervalMs)
+	}
 	seen := map[string]int{}
 	for i, slider := range cfg.Sliders {
 		id := slider.DeviceID
