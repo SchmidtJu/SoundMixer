@@ -197,18 +197,18 @@ Left-click the tray icon, or choose **Settings…** from the menu. **Quit** clos
 
 ![SoundMixer settings with four playback-device assignments](docs/Screenshot%202026-10-21%20163016.png)
 
-Assign each slider in the settings window, then click **Save**:
+Assign each slider in the settings window. Every change is saved immediately and the window stays open. **Close** returns to the tray; the mixer keeps running.
 
 - Pick a playback device, **Unassigned**, or **Windows default device**.
 - The percentage beside each slider shows its current position live, including the **Invert sliders** setting. It shows a dash while disconnected. Keyboard volume changes can make the Windows volume differ from the slider position.
 - **Unassigned** means that slider does nothing.
-- One device can belong to only one slider. Saving a duplicate shows a warning and keeps the previous settings.
+- One device can belong to only one slider. Selecting a duplicate shows a warning and restores the previous settings.
 - **Windows default device** follows whatever Windows currently uses as the default playback device.
 - An unplugged device stays in the list with **(disconnected)** and works again when it comes back.
 - **Invert sliders** swaps the quiet and loud ends of all four sliders.
-- **Start with Windows** starts the app when you sign in. After you move the exe, open settings and save once so the startup path is updated.
+- **Start with Windows** starts the app when you sign in. After you move the exe, start it from its new location so the startup path is updated.
 - **Enable logging** writes a log file. The path and the size limit are in [Configuration file](#configuration-file).
-- **Volume update interval (ms)** sets the minimum time between Windows volume updates, from 20 to 2000 ms. The default is 100 ms. Lower values make slider movements respond faster. Saving applies the interval immediately.
+- **Volume update interval (ms)** sets the minimum time between Windows volume updates, from 20 to 2000 ms. The default is 100 ms. Lower values make slider movements respond faster. Changes apply immediately.
 - The status line shows **Connected (COM5)** or **Disconnected – looking for ESP32…**.
 
 While a slider sits still, the keyboard volume keys and the Windows volume slider keep working. The next movement of that hardware slider sets the volume again.

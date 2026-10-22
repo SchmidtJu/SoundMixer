@@ -215,7 +215,7 @@ func (a *App) showSettings(owner *walk.MainWindow, store *config.Store, ctrl *au
 	var updateInterval *walk.NumberEdit
 	var statusLabel *walk.Label
 	var percentLabels [config.SliderCount]*walk.Label
-	var saveButton, cancelButton *walk.PushButton
+	var closeButton *walk.PushButton
 	boxes := make([]*walk.ComboBox, config.SliderCount)
 
 	children := []Widget{
@@ -271,17 +271,7 @@ func (a *App) showSettings(owner *walk.MainWindow, store *config.Store, ctrl *au
 					ToolTipText: "Open the folder containing soundmixer.log and config.json.",
 					OnClicked:   func() { openDataFolder(dlg) }},
 				HSpacer{},
-				PushButton{AssignTo: &cancelButton, Text: "Cancel", MinSize: Size{Width: 90, Height: 34}, OnClicked: func() { dlg.Cancel() }},
-				PushButton{
-					AssignTo: &saveButton,
-					Text:     "Save changes",
-					MinSize:  Size{Width: 120, Height: 34},
-					OnClicked: func() {
-						if saveSettings(dlg, store, cfg, boxes, ids, labels, invert, auto, logging, updateInterval, ctrl) {
-							dlg.Accept()
-						}
-					},
-				},
+				PushButton{AssignTo: &closeButton, Text: "Close", MinSize: Size{Width: 90, Height: 34}, OnClicked: func() { dlg.Cancel() }},
 			},
 		},
 	)
@@ -289,15 +279,14 @@ func (a *App) showSettings(owner *walk.MainWindow, store *config.Store, ctrl *au
 	// No owner: on close, walk would otherwise show the hidden main window
 	// (SWP_SHOWWINDOW) and quit the tray app.
 	if err := (Dialog{
-		AssignTo:      &dlg,
-		Title:         "SoundMixer",
-		Font:          Font{Family: "Segoe UI", PointSize: 10},
-		Background:    SolidColorBrush{Color: backgroundColor},
-		MinSize:       Size{Width: 640, Height: 630},
-		Layout:        VBox{Margins: Margins{24, 20, 24, 20}, Spacing: 12},
-		DefaultButton: &saveButton,
-		CancelButton:  &cancelButton,
-		Children:      children,
+		AssignTo:     &dlg,
+		Title:        "SoundMixer",
+		Font:         Font{Family: "Segoe UI", PointSize: 10},
+		Background:   SolidColorBrush{Color: backgroundColor},
+		MinSize:      Size{Width: 640, Height: 630},
+		Layout:       VBox{Margins: Margins{24, 20, 24, 20}, Spacing: 12},
+		CancelButton: &closeButton,
+		Children:     children,
 	}).Create(nil); err != nil {
 		logx.Printf("settings: %v", err)
 		walk.MsgBox(owner, "SoundMixer", "Could not open settings.", walk.MsgBoxIconError)
@@ -330,6 +319,34 @@ func (a *App) showSettings(owner *walk.MainWindow, store *config.Store, ctrl *au
 		}
 		_ = boxes[i].SetCurrentIndex(indexOf(ids, sliderID(cfg, i)))
 	}
+	// Attach after initialization so opening the window does not save settings.
+	// Suppress nested events while reporting errors and restoring saved values.
+	saving := false
+	autoSave := func() {
+		if saving {
+			return
+		}
+		saving = true
+		defer func() { saving = false }()
+		previous := store.Get()
+		if !saveSettings(dlg, store, previous, boxes, ids, labels, invert, auto, logging, updateInterval, ctrl) {
+			for i, box := range boxes {
+				_ = box.SetCurrentIndex(indexOf(ids, sliderID(previous, i)))
+			}
+			invert.SetChecked(previous.InvertSliders)
+			auto.SetChecked(previous.Autostart)
+			logging.SetChecked(previous.Logging)
+			_ = updateInterval.SetValue(float64(previous.UpdateIntervalMs))
+		}
+		a.refreshSettings()
+	}
+	for _, box := range boxes {
+		box.CurrentIndexChanged().Attach(autoSave)
+	}
+	invert.CheckedChanged().Attach(autoSave)
+	auto.CheckedChanged().Attach(autoSave)
+	logging.CheckedChanged().Attach(autoSave)
+	updateInterval.ValueChanged().Attach(autoSave)
 	dlg.Starting().Attach(func() {
 		_ = dlg.Activate()
 		win.SetForegroundWindow(dlg.Handle())
